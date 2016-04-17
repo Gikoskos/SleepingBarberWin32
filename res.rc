@@ -1,0 +1,10 @@
+/***********************************************\
+*                     res.rc                    *
+*           George Koskeridis (C) 2016          *
+\***********************************************/
+
+#include "common.h"
+
+
+IDI_LARGEBARBERWIN_ICON ICON "Barber64x64.ico"
+IDI_SMALLBARBERWIN_ICON ICON "Barber24x24.ico"
