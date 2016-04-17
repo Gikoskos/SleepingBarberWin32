@@ -234,6 +234,7 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
                     drawdll_func.StretchGraphics(curr_resolution);
 #else
                     SetBarbershopDoorState(!GetBarbershopDoorState());
+                    StretchGraphics(curr_resolution);
 #endif
                     break;
                 default:
