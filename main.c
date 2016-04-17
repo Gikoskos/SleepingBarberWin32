@@ -11,15 +11,12 @@
 #ifndef _DEBUG
 # include "draw.h"
 #else
-# define DLLCOPY_FILENAME TEXT("draw-loaded.dll")
-
 typedef struct _dll_func_address {
     void (*DrawBufferToWindow)(HWND, backbuffer_data*);
     void (*DrawToBuffer)(backbuffer_data*);
     void (*UpdateState)(void);
     void (*StretchGraphics)(int);
 } dll_func_address;
-
 #endif
 
 
@@ -51,28 +48,33 @@ static inline BOOL ConvertWinToClientResolutions(void);
 static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 #ifdef _DEBUG
-static BOOL LoadDrawDLL(HMODULE *to_load, LPCTSTR file_name,
-                        dll_func_address *drawdll_func)
+static BOOL LoadDrawDLL(HMODULE *to_load, LPCTSTR src_fname, LPCTSTR dest_fname, dll_func_address *drawdll_func)
 {
-    BOOL retvalue = FALSE;
+    if (*to_load) FreeLibrary(*to_load);
 
-    if (CopyFile(file_name, DLLCOPY_FILENAME, FALSE)) {
-        if ((*to_load = LoadLibrary(DLLCOPY_FILENAME)) != NULL) {
-            drawdll_func->DrawBufferToWindow = (void(*)(HWND, backbuffer_data*))GetProcAddress(*to_load, "DrawBufferToWindow");
-            drawdll_func->DrawToBuffer = (void(*)(backbuffer_data*))GetProcAddress(*to_load, "DrawToBuffer");
-            drawdll_func->UpdateState = (void(*)(void))GetProcAddress(*to_load, "UpdateState");
-            drawdll_func->StretchGraphics = (void(*)(int))GetProcAddress(*to_load, "StretchGraphics");
-            retvalue = TRUE;
+    if (!CopyFile(src_fname, dest_fname, FALSE)) {
+        if (GetLastError() == ERROR_FILE_NOT_FOUND) {
+            fprintf(stderr, "Copying of DLL failed! File not found.\n");
+        } else if (GetLastError() == ERROR_ACCESS_DENIED) {
+            fprintf(stderr, "Copying of DLL failed! Access denied.\n");
+        } else if (GetLastError() == ERROR_SHARING_VIOLATION) {
+            fprintf(stderr, "Copying of DLL failed! File is used by another process.\n");
         } else {
-            fprintf(stderr, "Failed loading library!\n");
+            fprintf(stderr, "Copying of DLL failed! Error code %lu\n", GetLastError());
         }
-    } else if (GetLastError() == ERROR_FILE_NOT_FOUND) {
-        fprintf(stderr, "Copying of DLL failed. File not found!\n");
-    } else if (GetLastError() == ERROR_ACCESS_DENIED) {
-        fprintf(stderr, "Copying of DLL failed. Access denied!\n");
     }
 
-    return retvalue;
+    if ((*to_load = LoadLibrary(dest_fname)) != NULL) {
+        drawdll_func->DrawBufferToWindow = (void(*)(HWND, backbuffer_data*))GetProcAddress(*to_load, "DrawBufferToWindow");
+        drawdll_func->DrawToBuffer = (void(*)(backbuffer_data*))GetProcAddress(*to_load, "DrawToBuffer");
+        drawdll_func->UpdateState = (void(*)(void))GetProcAddress(*to_load, "UpdateState");
+        drawdll_func->StretchGraphics = (void(*)(int))GetProcAddress(*to_load, "StretchGraphics");
+        return TRUE;
+    } else {
+        fprintf(stderr, "Failed loading library! Errcode %ld\n", GetLastError());
+    }
+
+    return FALSE;
 }
 #endif
 
@@ -345,11 +347,12 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     int loops;
 
 #ifdef _DEBUG
+# define DLLCOPY_FILENAME TEXT("draw-loaded.dll")
     int dll_load_counter = 0;
-    HMODULE drawdllmodule;
+    HMODULE drawdllmodule = NULL;
     dll_func_address drawdll_func = {NULL, NULL, NULL, NULL};
 
-    if (!LoadDrawDLL(&drawdllmodule, TEXT("draw.dll"), &drawdll_func))
+    if (!LoadDrawDLL(&drawdllmodule, TEXT("draw.dll"), DLLCOPY_FILENAME, &drawdll_func))
         return 1;
 #endif
     /*FIFOqueue *customer_queue = newFIFOqueue();
@@ -371,7 +374,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 #else
     StretchGraphics(curr_resolution);
 #endif
-
 
 #if defined(_DEBUG) && defined(_MSC_VER)
     //Create the console for debugging
@@ -403,7 +405,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
                 return 1;
             }
 #ifdef _DEBUG
-            drawdll_func.StretchGraphics(curr_resolution);
+            if (drawdll_func.StretchGraphics)
+                drawdll_func.StretchGraphics(curr_resolution);
 #else
             StretchGraphics(curr_resolution);
 #endif
@@ -415,12 +418,15 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         dll_load_counter++;
         if (dll_load_counter > 4000) {
             //printf("loading DLL\n");
-            FreeLibrary(drawdllmodule);
-            LoadDrawDLL(&drawdllmodule, TEXT("draw.dll"), &drawdll_func);
+            FreeLibrary(GetModuleHandle(DLLCOPY_FILENAME));
+            fprintf(stderr, "FreeLibrary err %lu!\n", GetLastError());
+            LoadDrawDLL(&drawdllmodule, TEXT("draw.dll"), DLLCOPY_FILENAME, &drawdll_func);
             dll_load_counter = 0;
         }
-        drawdll_func.DrawToBuffer(backbuff);
-        drawdll_func.DrawBufferToWindow(SBarberMainWindow.hwnd, backbuff);
+        if (drawdll_func.DrawToBuffer)
+            drawdll_func.DrawToBuffer(backbuff);
+        if (drawdll_func.DrawBufferToWindow)
+            drawdll_func.DrawBufferToWindow(SBarberMainWindow.hwnd, backbuff);
 #else
         DrawToBuffer(backbuff);
         DrawBufferToWindow(SBarberMainWindow.hwnd, backbuff);
@@ -430,7 +436,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         while (GetTickCount() > next_game_tick && loops < MAX_FRAMESKIP) {
             HandleMessages(SBarberMainWindow.hwnd);
 #ifdef _DEBUG
-            drawdll_func.UpdateState();
+            if (drawdll_func.UpdateState) drawdll_func.UpdateState();
 #else
             UpdateState();
 #endif
@@ -445,7 +451,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     //deleteFIFOqueue(customer_queue, WIN_MALLOC);
 
 #ifdef _DEBUG
-    FreeLibrary(drawdllmodule);
+    if (drawdllmodule)
+        FreeLibrary(drawdllmodule);
     DeleteFile(DLLCOPY_FILENAME);
 #endif
 
