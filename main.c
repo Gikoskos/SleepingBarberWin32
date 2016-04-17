@@ -209,6 +209,8 @@ static inline void HandleMessages(HWND hwnd)
 
 static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+#define IDM_EXIT       2000
+#define IDM_ABOUT      2001
 #define IDM_SMALL_RES  3000
 #define IDM_MEDIUM_RES 3001
 #define IDM_LARGE_RES  3002
@@ -264,14 +266,24 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
         case WM_COMMAND:
         {
             switch (LOWORD(wParam)) {
-            case IDM_SMALL_RES:
-            case IDM_MEDIUM_RES:
-            case IDM_LARGE_RES:
-                prev_resolution = curr_resolution;
-                curr_resolution = LOWORD(wParam) - 3000;
-                break;
-            default:
-                break;
+                case IDM_ABOUT:
+                    MessageBox(hwnd, TEXT("            ")
+                               TEXT("SleepingBarber Win32\n")
+                               TEXT("        ")
+                               TEXT("George Koskeridis (c) 2016 "),
+                               TEXT("About"), MB_OK);
+                    break;
+                case IDM_EXIT:
+                    SendMessage(hwnd, WM_CLOSE, (WPARAM)0, (LPARAM)0);
+                    break;
+                case IDM_SMALL_RES:
+                case IDM_MEDIUM_RES:
+                case IDM_LARGE_RES:
+                    prev_resolution = curr_resolution;
+                    curr_resolution = LOWORD(wParam) - 3000;
+                    break;
+                default:
+                    break;
             }
             switch (HIWORD(wParam)) {
             }
@@ -281,7 +293,9 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
         {
             ResolutionMenu = CreatePopupMenu();
 
-            AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED, 0, TEXT("Resolutions"));
+            AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
+            AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
+            AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED, 0, TEXT("Resolution"));
             AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
             AppendMenu(ResolutionMenu,
                        MF_STRING | ((curr_resolution == SMALL_WND) ? MF_CHECKED : MF_UNCHECKED),
@@ -292,6 +306,12 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
             AppendMenu(ResolutionMenu,
                        MF_STRING | ((curr_resolution == LARGE_WND) ? MF_CHECKED : MF_UNCHECKED),
                        IDM_LARGE_RES, TEXT("Large (1000x750)"));
+            AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
+            AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
+            AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED, 0, TEXT("Help"));
+            AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
+            AppendMenu(ResolutionMenu, MF_STRING | MF_UNCHECKED, IDM_ABOUT, TEXT("About"));
+            AppendMenu(ResolutionMenu, MF_STRING | MF_UNCHECKED, IDM_EXIT, TEXT("Exit"));
             GetCursorPos(&cursor_pos);
             TrackPopupMenuEx(ResolutionMenu,
                              TPM_CENTERALIGN | TPM_TOPALIGN | TPM_LEFTBUTTON | TPM_NOANIMATION,
