@@ -17,7 +17,11 @@ typedef struct _dll_func_address {
     void (*DrawToBuffer)(backbuffer_data*);
     void (*UpdateState)(void);
     void (*StretchGraphics)(int);
+    void (*SetBarbershopDoorState)(BOOL);
 } dll_func_address;
+
+static dll_func_address drawdll_func = {NULL, NULL, NULL, NULL, NULL};
+static BOOL door_open = FALSE;
 #endif
 
 
@@ -224,8 +228,13 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
                     break;
                 case VK_SPACE:
                 case 0x4F: //'O' key
-                    barbershop_door_open = !barbershop_door_open;
-                    fprintf(stderr, (barbershop_door_open) ? "Door is open\n" : "Door is closed\n");
+#ifdef _DEBUG
+                    door_open = !door_open;
+                    drawdll_func.SetBarbershopDoorState(door_open);
+                    drawdll_func.StretchGraphics(curr_resolution);
+#else
+                    SetBarbershopDoorState(!GetBarbershopDoorState());
+#endif
                     break;
                 default:
                     break;
@@ -303,13 +312,14 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
 }
 
 #ifdef _DEBUG
-static BOOL LoadDrawDLL(dll_func_address *drawdll_func)
+static BOOL LoadDrawDLL(void)
 {
-    LPCTSTR drawdll_loaded_fname = TEXT("draw-loaded.dll");
+    static int curr = 0;
+    LPCTSTR drawdll_loaded_fname[] = {TEXT("draw-loaded-0.dll"), TEXT("draw-loaded-1.dll")};
 
-    if (drawdll_func->to_load) FreeLibrary(drawdll_func->to_load);
+    if (drawdll_func.to_load) FreeLibrary(drawdll_func.to_load);
 
-    if (!CopyFile(TEXT("draw.dll"), drawdll_loaded_fname, FALSE)) {
+    if (!CopyFile(TEXT("draw.dll"), drawdll_loaded_fname[curr], FALSE)) {
         if (GetLastError() == ERROR_FILE_NOT_FOUND) {
             fprintf(stderr, "Copying of DLL failed! File not found.\n");
         } else if (GetLastError() == ERROR_ACCESS_DENIED) {
@@ -319,14 +329,20 @@ static BOOL LoadDrawDLL(dll_func_address *drawdll_func)
         } else {
             fprintf(stderr, "Copying of DLL failed! Error code %lu\n", GetLastError());
         }
+        curr = !curr;
         return FALSE;
     }
 
-    if ((drawdll_func->to_load = LoadLibrary(drawdll_loaded_fname)) != NULL) {
-        drawdll_func->DrawBufferToWindow = (void(*)(HWND, backbuffer_data*))GetProcAddress(drawdll_func->to_load, "DrawBufferToWindow");
-        drawdll_func->DrawToBuffer = (void(*)(backbuffer_data*))GetProcAddress(drawdll_func->to_load, "DrawToBuffer");
-        drawdll_func->UpdateState = (void(*)(void))GetProcAddress(drawdll_func->to_load, "UpdateState");
-        drawdll_func->StretchGraphics = (void(*)(int))GetProcAddress(drawdll_func->to_load, "StretchGraphics");
+    if ((drawdll_func.to_load = LoadLibrary(drawdll_loaded_fname[curr])) != NULL) {
+        drawdll_func.DrawBufferToWindow = (void(*)(HWND, backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawBufferToWindow");
+        drawdll_func.DrawToBuffer = (void(*)(backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawToBuffer");
+        drawdll_func.UpdateState = (void(*)(void))GetProcAddress(drawdll_func.to_load, "UpdateState");
+        drawdll_func.StretchGraphics = (void(*)(int))GetProcAddress(drawdll_func.to_load, "StretchGraphics");
+        drawdll_func.SetBarbershopDoorState = (void(*)(BOOL))GetProcAddress(drawdll_func.to_load, "SetBarbershopDoorState");
+
+        drawdll_func.SetBarbershopDoorState(door_open);
+        drawdll_func.StretchGraphics(curr_resolution);
+        curr = !curr;
         return TRUE;
     } else {
         fprintf(stderr, "Failed loading library! Errcode %ld\n", GetLastError());
@@ -351,9 +367,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
 #ifdef _DEBUG
     int dll_load_counter = 0;
-    dll_func_address drawdll_func = {NULL, NULL, NULL, NULL, NULL};
 
-    if (!LoadDrawDLL(&drawdll_func))
+    if (!LoadDrawDLL())
         return 1;
 #endif
     /*FIFOqueue *customer_queue = newFIFOqueue();
@@ -418,7 +433,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 #ifdef _DEBUG
         dll_load_counter++;
         if (dll_load_counter > 4000) {
-            LoadDrawDLL(&drawdll_func);
+            LoadDrawDLL();
             dll_load_counter = 0;
         }
 
@@ -441,6 +456,11 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
             loops++;
         }
     }
+
+#ifdef _DEBUG
+    DeleteFile(TEXT("draw-loaded-0.dll"));
+    DeleteFile(TEXT("draw-loaded-1.dll"));
+#endif
 
     if (!DeleteBackbuffer(backbuff)) {
         fprintf(stderr, "Error deleting backbuff!\n");
