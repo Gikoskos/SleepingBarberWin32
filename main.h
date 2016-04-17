@@ -31,4 +31,6 @@ enum {
     LARGE_WND
 };
 
+BOOL barbershop_door_open;
+
 #endif //__MAIN_H

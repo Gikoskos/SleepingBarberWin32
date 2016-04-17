@@ -12,6 +12,7 @@
 
 #ifdef _DEBUG
 typedef struct _dll_func_address {
+    HMODULE to_load;
     void (*DrawBufferToWindow)(HWND, backbuffer_data*);
     void (*DrawToBuffer)(backbuffer_data*);
     void (*UpdateState)(void);
@@ -33,7 +34,7 @@ POINT resolutions[TOTAL_RESOLUTIONS] = {
 //is TRUE when the game is running and false when it's not
 static BOOL running = FALSE;
 static HINSTANCE g_hInst;
-static BOOL barbershop_door_open = FALSE;
+BOOL barbershop_door_open = FALSE;
 
 
 /* Prototypes for functions with local scope */
@@ -47,38 +48,6 @@ static inline void HandleMessages(HWND hwnd);
 static inline BOOL ConvertWinToClientResolutions(void);
 static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-#ifdef _DEBUG
-#define DRAWDLL_LOADEDFNAME TEXT("draw-loaded.dll")
-static BOOL LoadDrawDLL(HMODULE *to_load, dll_func_address *drawdll_func)
-{
-    if (*to_load) FreeLibrary(*to_load);
-
-    if (!CopyFile(TEXT("draw.dll"), DRAWDLL_LOADEDFNAME, FALSE)) {
-        if (GetLastError() == ERROR_FILE_NOT_FOUND) {
-            fprintf(stderr, "Copying of DLL failed! File not found.\n");
-        } else if (GetLastError() == ERROR_ACCESS_DENIED) {
-            fprintf(stderr, "Copying of DLL failed! Access denied.\n");
-        } else if (GetLastError() == ERROR_SHARING_VIOLATION) {
-            fprintf(stderr, "Copying of DLL failed! File is used by another process.\n");
-        } else {
-            fprintf(stderr, "Copying of DLL failed! Error code %lu\n", GetLastError());
-        }
-        return FALSE;
-    }
-
-    if ((*to_load = LoadLibrary(DRAWDLL_LOADEDFNAME)) != NULL) {
-        drawdll_func->DrawBufferToWindow = (void(*)(HWND, backbuffer_data*))GetProcAddress(*to_load, "DrawBufferToWindow");
-        drawdll_func->DrawToBuffer = (void(*)(backbuffer_data*))GetProcAddress(*to_load, "DrawToBuffer");
-        drawdll_func->UpdateState = (void(*)(void))GetProcAddress(*to_load, "UpdateState");
-        drawdll_func->StretchGraphics = (void(*)(int))GetProcAddress(*to_load, "StretchGraphics");
-        return TRUE;
-    } else {
-        fprintf(stderr, "Failed loading library! Errcode %ld\n", GetLastError());
-    }
-
-    return FALSE;
-}
-#endif
 
 static backbuffer_data *NewBackbuffer(HWND hwnd)
 {
@@ -251,7 +220,6 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
         {
             switch (wParam) {
                 case VK_ESCAPE:
-                    fprintf(stderr, "Escape key\n");
                     SendMessage(hwnd, WM_CLOSE, (WPARAM)0, (LPARAM)0);
                     break;
                 case VK_SPACE:
@@ -334,6 +302,39 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
     return TRUE;
 }
 
+#ifdef _DEBUG
+static BOOL LoadDrawDLL(dll_func_address *drawdll_func)
+{
+    LPCTSTR drawdll_loaded_fname = TEXT("draw-loaded.dll");
+
+    if (drawdll_func->to_load) FreeLibrary(drawdll_func->to_load);
+
+    if (!CopyFile(TEXT("draw.dll"), drawdll_loaded_fname, FALSE)) {
+        if (GetLastError() == ERROR_FILE_NOT_FOUND) {
+            fprintf(stderr, "Copying of DLL failed! File not found.\n");
+        } else if (GetLastError() == ERROR_ACCESS_DENIED) {
+            fprintf(stderr, "Copying of DLL failed! Access denied.\n");
+        } else if (GetLastError() == ERROR_SHARING_VIOLATION) {
+            fprintf(stderr, "Copying of DLL failed! File is used by another process.\n");
+        } else {
+            fprintf(stderr, "Copying of DLL failed! Error code %lu\n", GetLastError());
+        }
+        return FALSE;
+    }
+
+    if ((drawdll_func->to_load = LoadLibrary(drawdll_loaded_fname)) != NULL) {
+        drawdll_func->DrawBufferToWindow = (void(*)(HWND, backbuffer_data*))GetProcAddress(drawdll_func->to_load, "DrawBufferToWindow");
+        drawdll_func->DrawToBuffer = (void(*)(backbuffer_data*))GetProcAddress(drawdll_func->to_load, "DrawToBuffer");
+        drawdll_func->UpdateState = (void(*)(void))GetProcAddress(drawdll_func->to_load, "UpdateState");
+        drawdll_func->StretchGraphics = (void(*)(int))GetProcAddress(drawdll_func->to_load, "StretchGraphics");
+        return TRUE;
+    } else {
+        fprintf(stderr, "Failed loading library! Errcode %ld\n", GetLastError());
+    }
+
+    return FALSE;
+}
+#endif
 
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
@@ -350,10 +351,9 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
 #ifdef _DEBUG
     int dll_load_counter = 0;
-    HMODULE drawdllmodule = NULL;
-    dll_func_address drawdll_func = {NULL, NULL, NULL, NULL};
+    dll_func_address drawdll_func = {NULL, NULL, NULL, NULL, NULL};
 
-    if (!LoadDrawDLL(&drawdllmodule, &drawdll_func))
+    if (!LoadDrawDLL(&drawdll_func))
         return 1;
 #endif
     /*FIFOqueue *customer_queue = newFIFOqueue();
@@ -418,17 +418,12 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 #ifdef _DEBUG
         dll_load_counter++;
         if (dll_load_counter > 4000) {
-            FreeLibrary(drawdllmodule);
-            fprintf(stderr, "FreeLibrarydlldraw err %lu!\n", GetLastError());
-            LoadDrawDLL(&drawdllmodule, &drawdll_func);
+            LoadDrawDLL(&drawdll_func);
             dll_load_counter = 0;
         }
 
-        if (drawdll_func.DrawToBuffer)
-            drawdll_func.DrawToBuffer(backbuff);
-
-        if (drawdll_func.DrawBufferToWindow)
-            drawdll_func.DrawBufferToWindow(SBarberMainWindow.hwnd, backbuff);
+        drawdll_func.DrawToBuffer(backbuff);
+        drawdll_func.DrawBufferToWindow(SBarberMainWindow.hwnd, backbuff);
 #else
         DrawToBuffer(backbuff);
         DrawBufferToWindow(SBarberMainWindow.hwnd, backbuff);
@@ -451,12 +446,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         fprintf(stderr, "Error deleting backbuff!\n");
     }
     //deleteFIFOqueue(customer_queue, WIN_MALLOC);
-
-#ifdef _DEBUG
-    if (drawdllmodule)
-        FreeLibrary(drawdllmodule);
-    DeleteFile(DRAWDLL_LOADEDFNAME);
-#endif
 
 #if defined(_DEBUG) && defined(_MSC_VER)
     FreeConsole();
