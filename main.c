@@ -293,22 +293,19 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
         {
             ResolutionMenu = CreatePopupMenu();
 
-            AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
-            AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
             AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED, 0, TEXT("Resolution"));
             AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
             AppendMenu(ResolutionMenu,
                        MF_STRING | ((curr_resolution == SMALL_WND) ? MF_CHECKED : MF_UNCHECKED),
-                       IDM_SMALL_RES, TEXT("Small (640x480)"));
+                       IDM_SMALL_RES, TEXT("Low (640x480)"));
             AppendMenu(ResolutionMenu,
                        MF_STRING | ((curr_resolution == MEDIUM_WND) ? MF_CHECKED : MF_UNCHECKED),
                        IDM_MEDIUM_RES, TEXT("Medium (800x600)"));
             AppendMenu(ResolutionMenu,
                        MF_STRING | ((curr_resolution == LARGE_WND) ? MF_CHECKED : MF_UNCHECKED),
-                       IDM_LARGE_RES, TEXT("Large (1000x750)"));
-            AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
-            AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
-            AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED, 0, TEXT("Help"));
+                       IDM_LARGE_RES, TEXT("High (1000x750)"));
+
+            AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED | MF_MENUBREAK, 0, TEXT("Help"));
             AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
             AppendMenu(ResolutionMenu, MF_STRING | MF_UNCHECKED, IDM_ABOUT, TEXT("About"));
             AppendMenu(ResolutionMenu, MF_STRING | MF_UNCHECKED, IDM_EXIT, TEXT("Exit"));
@@ -479,6 +476,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     }
 
 #ifdef _DEBUG
+    FreeLibrary(drawdll_func.to_load);
     DeleteFile(TEXT("draw-loaded-0.dll"));
     DeleteFile(TEXT("draw-loaded-1.dll"));
 #endif

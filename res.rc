@@ -5,6 +5,7 @@
 
 #include "common.h"
 
+1 RT_MANIFEST "SleepingBarberWin.exe.manifest"
 
 IDI_LARGEBARBERWIN_ICON ICON "Barber64x64.ico"
 IDI_SMALLBARBERWIN_ICON ICON "Barber24x24.ico"
