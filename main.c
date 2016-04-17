@@ -7,10 +7,10 @@
 #include "customer.h"
 #include "barber.h"
 #include "FIFOqueue.h"
+#include "draw.h"
 
-#ifndef _DEBUG
-# include "draw.h"
-#else
+
+#ifdef _DEBUG
 typedef struct _dll_func_address {
     void (*DrawBufferToWindow)(HWND, backbuffer_data*);
     void (*DrawToBuffer)(backbuffer_data*);
@@ -48,11 +48,12 @@ static inline BOOL ConvertWinToClientResolutions(void);
 static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 #ifdef _DEBUG
-static BOOL LoadDrawDLL(HMODULE *to_load, LPCTSTR src_fname, LPCTSTR dest_fname, dll_func_address *drawdll_func)
+#define DRAWDLL_LOADEDFNAME TEXT("draw-loaded.dll")
+static BOOL LoadDrawDLL(HMODULE *to_load, dll_func_address *drawdll_func)
 {
     if (*to_load) FreeLibrary(*to_load);
 
-    if (!CopyFile(src_fname, dest_fname, FALSE)) {
+    if (!CopyFile(TEXT("draw.dll"), DRAWDLL_LOADEDFNAME, FALSE)) {
         if (GetLastError() == ERROR_FILE_NOT_FOUND) {
             fprintf(stderr, "Copying of DLL failed! File not found.\n");
         } else if (GetLastError() == ERROR_ACCESS_DENIED) {
@@ -62,9 +63,10 @@ static BOOL LoadDrawDLL(HMODULE *to_load, LPCTSTR src_fname, LPCTSTR dest_fname,
         } else {
             fprintf(stderr, "Copying of DLL failed! Error code %lu\n", GetLastError());
         }
+        return FALSE;
     }
 
-    if ((*to_load = LoadLibrary(dest_fname)) != NULL) {
+    if ((*to_load = LoadLibrary(DRAWDLL_LOADEDFNAME)) != NULL) {
         drawdll_func->DrawBufferToWindow = (void(*)(HWND, backbuffer_data*))GetProcAddress(*to_load, "DrawBufferToWindow");
         drawdll_func->DrawToBuffer = (void(*)(backbuffer_data*))GetProcAddress(*to_load, "DrawToBuffer");
         drawdll_func->UpdateState = (void(*)(void))GetProcAddress(*to_load, "UpdateState");
@@ -347,12 +349,11 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     int loops;
 
 #ifdef _DEBUG
-# define DLLCOPY_FILENAME TEXT("draw-loaded.dll")
     int dll_load_counter = 0;
     HMODULE drawdllmodule = NULL;
     dll_func_address drawdll_func = {NULL, NULL, NULL, NULL};
 
-    if (!LoadDrawDLL(&drawdllmodule, TEXT("draw.dll"), DLLCOPY_FILENAME, &drawdll_func))
+    if (!LoadDrawDLL(&drawdllmodule, &drawdll_func))
         return 1;
 #endif
     /*FIFOqueue *customer_queue = newFIFOqueue();
@@ -417,14 +418,15 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 #ifdef _DEBUG
         dll_load_counter++;
         if (dll_load_counter > 4000) {
-            //printf("loading DLL\n");
-            FreeLibrary(GetModuleHandle(DLLCOPY_FILENAME));
-            fprintf(stderr, "FreeLibrary err %lu!\n", GetLastError());
-            LoadDrawDLL(&drawdllmodule, TEXT("draw.dll"), DLLCOPY_FILENAME, &drawdll_func);
+            FreeLibrary(drawdllmodule);
+            fprintf(stderr, "FreeLibrarydlldraw err %lu!\n", GetLastError());
+            LoadDrawDLL(&drawdllmodule, &drawdll_func);
             dll_load_counter = 0;
         }
+
         if (drawdll_func.DrawToBuffer)
             drawdll_func.DrawToBuffer(backbuff);
+
         if (drawdll_func.DrawBufferToWindow)
             drawdll_func.DrawBufferToWindow(SBarberMainWindow.hwnd, backbuff);
 #else
@@ -453,7 +455,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 #ifdef _DEBUG
     if (drawdllmodule)
         FreeLibrary(drawdllmodule);
-    DeleteFile(DLLCOPY_FILENAME);
+    DeleteFile(DRAWDLL_LOADEDFNAME);
 #endif
 
 #if defined(_DEBUG) && defined(_MSC_VER)
