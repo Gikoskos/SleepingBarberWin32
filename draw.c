@@ -5,10 +5,12 @@
 
 #include "draw.h"
 
+#define CUSTOMER_CHAIRS  5
+
 #define WALL_VERTICES         12
 #define DOOR_VERTICES          4
 #define BARBERCHAIR_VERTICES   7
-#define CHAIR_VERTICES         4
+#define CHAIR_VERTICES         8
 
 static const POINT lowres_wall_vertices[WALL_VERTICES] = {
     {600, 450}, {600, 30}, {280, 30}, 
@@ -20,13 +22,35 @@ static const POINT lowres_wall_vertices[WALL_VERTICES] = {
 }, lowres_opened_door_vertices[DOOR_VERTICES] = {
     {358, 41}, {359, 51}, {290, 60}, {288, 50}
 }, lowres_barberchair_vertices[BARBERCHAIR_VERTICES] = {
-    {460, 330}, {470, 330}, {440, 390}, {440, 395},
-    {400, 395}, {400, 390}, {435, 390}
-}, lowres_chair_vertices;
+    {450, 330}, {460, 330}, {430, 390}, {430, 395},
+    {390, 395}, {390, 390}, {425, 390}
+}, lowres_customerchair_vertices[CUSTOMER_CHAIRS][CHAIR_VERTICES] = {
+    {
+        {525, 45}, {588, 45}, {588, 105}, {525, 105},
+        {525, 95}, {578, 95}, {578, 55}, {525, 55}
+    },
+    {
+        {525, 110}, {588, 110}, {588, 170}, {525, 170},
+        {525, 160}, {578, 160}, {578, 120}, {525, 120}
+    },
+    {
+        {525, 175}, {588, 175}, {588, 235}, {525, 235},
+        {525, 225}, {578, 225}, {578, 185}, {525, 185}
+    },
+    {
+        {525, 240}, {588, 240}, {588, 300}, {525, 300},
+        {525, 290}, {578, 290}, {578, 250}, {525, 250}
+    },
+    {
+        {525, 305}, {588, 305}, {588, 365}, {525, 365},
+        {525, 355}, {578, 355}, {578, 315}, {525, 315}
+    }
+};
 
 
 static POINT scaled_wall[WALL_VERTICES], scaled_door[DOOR_VERTICES],
-             scaled_barberchair[BARBERCHAIR_VERTICES];
+             scaled_barberchair[BARBERCHAIR_VERTICES],
+             scaled_customerchair[CUSTOMER_CHAIRS][CHAIR_VERTICES];
 static BOOL barbershop_door_open = FALSE;
 static int scaled_pen_thickness;
 
@@ -84,6 +108,11 @@ void StretchGraphics(int scaling_idx)
             if (i < BARBERCHAIR_VERTICES) {
                 scaled_barberchair[i] = lowres_barberchair_vertices[i];
             }
+
+            if (i < CHAIR_VERTICES) {
+                for (int j = 0; j < CUSTOMER_CHAIRS; j++)
+                    scaled_customerchair[j][i] = lowres_customerchair_vertices[j][i];
+            }
         } else {
             double tmp = (double)(lowres_wall_vertices[i].x * (pow(1.25, (double)scaling_idx)));
             scaled_wall[i].x = (LONG)tmp;
@@ -107,6 +136,16 @@ void StretchGraphics(int scaling_idx)
 
                 tmp = (double)(lowres_barberchair_vertices[i].y * (pow(1.25, (double)scaling_idx)));
                 scaled_barberchair[i].y = tmp;
+            }
+
+            if (i < CHAIR_VERTICES) {
+                for (int j = 0; j < CUSTOMER_CHAIRS; j++) {
+                    tmp = (double)(lowres_customerchair_vertices[j][i].x * (pow(1.25, (double)scaling_idx)));
+                    scaled_customerchair[j][i].x = tmp;
+
+                    tmp = (double)(lowres_customerchair_vertices[j][i].y * (pow(1.25, (double)scaling_idx)));
+                    scaled_customerchair[j][i].y = tmp;
+                }
             }
         }
     }
@@ -177,7 +216,20 @@ void DrawToBuffer(backbuffer_data *buf)
     }
 
     //draw the customer chairs
-    
+    {
+        HPEN chair_pen = CreatePen(PS_SOLID, (scaled_pen_thickness - 1), RGB_BLACK);
+        HBRUSH chair_brush = CreateSolidBrush(RGB_ORANGE);
+        prev_pen = SelectObject(buf->hdc, chair_pen);
+        prev_brush = SelectObject(buf->hdc, chair_brush);
+        SetBkColor(buf->hdc, RGB_GREEN);
+        for (int j = 0; j < CUSTOMER_CHAIRS; j++)
+            Polygon(buf->hdc, scaled_customerchair[j], CHAIR_VERTICES);
+
+        SelectObject(buf->hdc, prev_pen);
+        SelectObject(buf->hdc, prev_brush);
+        DeleteObject((HGDIOBJ)chair_pen);
+        DeleteObject((HGDIOBJ)chair_brush);
+    }
 }
 
 void UpdateState(void)
