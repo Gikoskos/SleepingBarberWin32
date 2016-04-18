@@ -306,7 +306,10 @@ void DrawToBuffer(backbuffer_data *buf)
 
 static RECT GetOnBarberChairRect(void)
 {
-    RECT retvalue = {.left = 390, .top = 345};
+    RECT retvalue;
+
+    retvalue.left = scaled_barberchair[0].x - scaled_character_dimension.x * 1.5;
+    retvalue.top = scaled_barberchair[0].y + scaled_character_dimension.y / 3;
     retvalue.right = retvalue.left + scaled_character_dimension.x;
     retvalue.bottom = retvalue.top + scaled_character_dimension.y;
     return retvalue;
@@ -324,10 +327,7 @@ static RECT GetOnEmptyCustomerChairRect(int chair_idx)
 {
     RECT retvalue = {0, 0, 0, 0};
 
-    //int i;
-    //for (i = 0; (i < CUSTOMER_CHAIRS) && !chair_occupied[i]; i++);
-
-    if (chair_idx < 0 || chair_idx >= CHAIR_VERTICES) return retvalue;
+    if (chair_idx < 0 || chair_idx >= CUSTOMER_CHAIRS) return retvalue;
 
     //adding a scaled value here to push the character into the chair for all resolutions
     retvalue.left = scaled_customerchair[chair_idx][CHAIR_VERTICES - 1].x + scaled_character_dimension.x / 3;
@@ -345,7 +345,33 @@ static RECT GetNextToWaitingRoomRect(void)
     return retvalue;
 }
 
-void UpdateState(void)
+#ifndef _DEBUG
+static int barber_pos = 0;
+void ChangeBarberPos(int flag)
 {
-    barber_graphic = GetOnEmptyCustomerChairRect(4);
+    if (flag == VK_UP) {
+        barber_pos--;
+        if (barber_pos < -1) {
+            barber_pos = CUSTOMER_CHAIRS - 1;
+        }
+    } else if (flag == VK_DOWN) {
+        barber_pos++;
+        if (barber_pos > CUSTOMER_CHAIRS) {
+            barber_pos = 0;
+        }
+    }
+    
+}
+#endif
+
+void UpdateState()
+{
+#ifndef _DEBUG
+    barber_graphic = (barber_pos == -1 || barber_pos == CUSTOMER_CHAIRS) ? GetOnBarberChairRect() : GetOnEmptyCustomerChairRect(barber_pos);
+#else
+    barber_graphic = GetOnBarberChairRect();
+#endif
+    
+    /*static int i = 0;
+    if (++i >= CUSTOMER_CHAIRS) i = 0;*/
 }

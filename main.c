@@ -223,6 +223,21 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
         {
             break;
         }
+#ifndef _DEBUG
+extern void ChangeBarberPos(int flag);
+        case WM_KEYDOWN:
+        {
+            switch (wParam) {
+                case VK_UP:
+                case VK_DOWN:
+                    ChangeBarberPos(wParam);
+                    break;
+                default:
+                    break;
+            }
+            break;
+        }
+#endif
         case WM_KEYUP:
         {
             switch (wParam) {
@@ -333,12 +348,10 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
 #ifdef _DEBUG
 static BOOL LoadDrawDLL(void)
 {
-    static int curr = 0;
-    LPCTSTR drawdll_loaded_fname[] = {TEXT("draw-loaded-0.dll"), TEXT("draw-loaded-1.dll")};
+    //static int curr = 0;
+    LPCTSTR drawdll_loaded_fname = TEXT("draw-loaded-0.dll");
 
-    if (drawdll_func.to_load) FreeLibrary(drawdll_func.to_load);
-
-    if (!CopyFile(TEXT("draw.dll"), drawdll_loaded_fname[curr], FALSE)) {
+    if (!CopyFile(TEXT("draw.dll"), drawdll_loaded_fname, FALSE)) {
         if (GetLastError() == ERROR_FILE_NOT_FOUND) {
             fprintf(stderr, "Copying of DLL failed! File not found.\n");
         } else if (GetLastError() == ERROR_ACCESS_DENIED) {
@@ -348,11 +361,11 @@ static BOOL LoadDrawDLL(void)
         } else {
             fprintf(stderr, "Copying of DLL failed! Error code %lu\n", GetLastError());
         }
-        curr = !curr;
+        //curr = !curr;
         return FALSE;
     }
 
-    if ((drawdll_func.to_load = LoadLibrary(drawdll_loaded_fname[curr])) != NULL) {
+    if ((drawdll_func.to_load = LoadLibrary(drawdll_loaded_fname)) != NULL) {
         drawdll_func.DrawBufferToWindow = (void(*)(HWND, backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawBufferToWindow");
         drawdll_func.DrawToBuffer = (void(*)(backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawToBuffer");
         drawdll_func.UpdateState = (void(*)(void))GetProcAddress(drawdll_func.to_load, "UpdateState");
@@ -361,13 +374,27 @@ static BOOL LoadDrawDLL(void)
 
         drawdll_func.SetBarbershopDoorState(door_open);
         drawdll_func.ScaleGraphics(curr_resolution);
-        curr = !curr;
+        //curr = !curr;
         return TRUE;
     } else {
         fprintf(stderr, "Failed loading library! Errcode %ld\n", GetLastError());
     }
 
     return FALSE;
+}
+
+static FILETIME GetDrawDLLLastWriteTime()
+{
+    FILETIME retvalue = {0, 0};
+    WIN32_FIND_DATA drawdll_data;
+    HANDLE hdrawdll = FindFirstFile(TEXT("draw.dll"), &drawdll_data);
+    if (hdrawdll != INVALID_HANDLE_VALUE) {
+        FindClose(hdrawdll);
+        retvalue = drawdll_data.ftLastWriteTime;
+    } else {
+        fprintf(stderr, "Failed loading draw.dll! Errcode %ld\n", GetLastError());
+    }
+    return retvalue;
 }
 #endif
 
@@ -385,7 +412,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     int loops;
 
 #ifdef _DEBUG
-    int dll_load_counter = 0;
+    FILETIME currLastWriteTime, prevLastWriteTime;
+    currLastWriteTime = prevLastWriteTime = GetDrawDLLLastWriteTime();
 
     if (!LoadDrawDLL())
         return 1;
@@ -450,10 +478,14 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
             prev_resolution = curr_resolution;
         }
 #ifdef _DEBUG
-        dll_load_counter++;
-        if (dll_load_counter > 4000) {
+        currLastWriteTime = GetDrawDLLLastWriteTime();
+        if (CompareFileTime(&currLastWriteTime, &prevLastWriteTime) && currLastWriteTime.dwLowDateTime) {
+            Sleep(200);
+            FreeLibrary(drawdll_func.to_load);
+            printf("RELOADING\n");
             LoadDrawDLL();
-            dll_load_counter = 0;
+            prevLastWriteTime.dwLowDateTime = currLastWriteTime.dwLowDateTime;
+            prevLastWriteTime.dwHighDateTime = currLastWriteTime.dwHighDateTime;
         }
 
         drawdll_func.DrawToBuffer(backbuff);
