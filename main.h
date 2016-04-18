@@ -11,6 +11,7 @@
 #include "common.h"
 
 #define TOTAL_RESOLUTIONS 3
+#define TOTAL_CUSTOMERS  10
 
 typedef struct _backbuffer_data {
     HBITMAP hBitmap;

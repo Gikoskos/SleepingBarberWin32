@@ -16,7 +16,7 @@ typedef struct _dll_func_address {
     void (*DrawBufferToWindow)(HWND, backbuffer_data*);
     void (*DrawToBuffer)(backbuffer_data*);
     void (*UpdateState)(void);
-    void (*StretchGraphics)(int);
+    void (*ScaleGraphics)(int);
     void (*SetBarbershopDoorState)(BOOL);
 } dll_func_address;
 
@@ -87,6 +87,7 @@ static backbuffer_data *NewBackbuffer(HWND hwnd)
         ReleaseDC(hwnd, hdc);
         return (backbuffer_data*)NULL;
     }
+
     HGDIOBJ temp = SelectObject(new->hdc, new->hBitmap);
     DeleteObject(temp);
     ReleaseDC(hwnd, hdc);
@@ -233,10 +234,10 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
 #ifdef _DEBUG
                     door_open = !door_open;
                     drawdll_func.SetBarbershopDoorState(door_open);
-                    drawdll_func.StretchGraphics(curr_resolution);
+                    drawdll_func.ScaleGraphics(curr_resolution);
 #else
                     SetBarbershopDoorState(!GetBarbershopDoorState());
-                    StretchGraphics(curr_resolution);
+                    ScaleGraphics(curr_resolution);
 #endif
                     break;
                 default:
@@ -355,11 +356,11 @@ static BOOL LoadDrawDLL(void)
         drawdll_func.DrawBufferToWindow = (void(*)(HWND, backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawBufferToWindow");
         drawdll_func.DrawToBuffer = (void(*)(backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawToBuffer");
         drawdll_func.UpdateState = (void(*)(void))GetProcAddress(drawdll_func.to_load, "UpdateState");
-        drawdll_func.StretchGraphics = (void(*)(int))GetProcAddress(drawdll_func.to_load, "StretchGraphics");
+        drawdll_func.ScaleGraphics = (void(*)(int))GetProcAddress(drawdll_func.to_load, "ScaleGraphics");
         drawdll_func.SetBarbershopDoorState = (void(*)(BOOL))GetProcAddress(drawdll_func.to_load, "SetBarbershopDoorState");
 
         drawdll_func.SetBarbershopDoorState(door_open);
-        drawdll_func.StretchGraphics(curr_resolution);
+        drawdll_func.ScaleGraphics(curr_resolution);
         curr = !curr;
         return TRUE;
     } else {
@@ -404,9 +405,9 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     SBarberMainWindow.width = resolutions[curr_resolution].x;
     SBarberMainWindow.height = resolutions[curr_resolution].y;
 #ifdef _DEBUG
-    drawdll_func.StretchGraphics(curr_resolution);
+    drawdll_func.ScaleGraphics(curr_resolution);
 #else
-    StretchGraphics(curr_resolution);
+    ScaleGraphics(curr_resolution);
 #endif
 
 #if defined(_DEBUG) && defined(_MSC_VER)
@@ -439,10 +440,10 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
                 return 1;
             }
 #ifdef _DEBUG
-            if (drawdll_func.StretchGraphics)
-                drawdll_func.StretchGraphics(curr_resolution);
+            if (drawdll_func.ScaleGraphics)
+                drawdll_func.ScaleGraphics(curr_resolution);
 #else
-            StretchGraphics(curr_resolution);
+            ScaleGraphics(curr_resolution);
 #endif
             ResizeWindow(SBarberMainWindow.hwnd, curr_resolution, prev_resolution);
             backbuff = NewBackbuffer(SBarberMainWindow.hwnd);

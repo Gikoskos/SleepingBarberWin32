@@ -9,7 +9,6 @@
 #include "FIFOqueue.h"
 
 static BOOL BarberIsInitialized = FALSE;
-static const int BarberWidth = 50, BarberHeight = 100;
 
 /* Prototypes for functions with local scope */
 static UINT CALLBACK BarberThread(void *args);
@@ -30,9 +29,7 @@ barber_data *InitBarber(void)
         return (barber_data*)NULL;
     }
 
-    new->width = BarberWidth;
-    new->height = BarberHeight;
-
+    new->state = SLEEPING;
     new->hthrd = (HANDLE)_beginthreadex(BarberThread, 0, NULL, NULL, CREATE_SUSPENDED, NULL);
     return new;
 }

@@ -10,10 +10,14 @@
 
 #include "common.h"
 
+typedef enum _barber_state {
+    SLEEPING,
+    CUTTING_HAIR
+} barber_state;
+
 typedef struct _barber_data {
     HANDLE hthrd; //the handle of the barber's thread
-    POINT coords; //coordinates for the up-left corner of the barber's Bitmap rectangle
-    int width, height;
+    barber_state state;
 } barber_data;
 
 

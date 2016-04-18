@@ -15,7 +15,7 @@
 void DrawBufferToWindow(HWND to, backbuffer_data *from);
 void DrawToBuffer(backbuffer_data *buf);
 void UpdateState(void);
-void StretchGraphics(int scaling_idx);
+void ScaleGraphics(int scaling_idx);
 void SetBarbershopDoorState(BOOL new_state);
 BOOL GetBarbershopDoorState(void);
 #endif //__DRAW_H

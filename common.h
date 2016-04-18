@@ -44,11 +44,13 @@
 #define win_calloc(x, y) win_malloc(x * y)
 
 //RGB color macros
-#define RGB_WHITE RGB(255, 255, 255)
-#define RGB_BLACK RGB(0, 0, 0)
-#define RGB_ORANGE RGB(255, 116, 53)
-#define RGB_PURPLE RGB(64, 0, 255)
-#define RGB_GREEN RGB(0, 204, 0)
+#define RGB_WHITE       RGB(255, 255, 255)
+#define RGB_BLACK       RGB(0, 0, 0)
+#define RGB_ORANGE      RGB(255, 116, 53)
+#define RGB_PURPLE      RGB(64, 0, 255)
+#define RGB_GREEN       RGB(0, 204, 0)
+#define RGB_RED         RGB(255, 0, 0)
+#define RGB_PURPLEBLUE  RGB(64, 55, 145)
 
 
 #define IDI_LARGEBARBERWIN_ICON 210
