@@ -10,14 +10,15 @@
 
 #include "common.h"
 
-typedef enum _barber_state {
+enum barber_state {
     SLEEPING,
-    CUTTING_HAIR
-} barber_state;
+    CUTTING_HAIR,
+    GET_NEXT_CUSTOMER
+};
 
 typedef struct _barber_data {
     HANDLE hthrd; //the handle of the barber's thread
-    barber_state state;
+    enum barber_state state;
 } barber_data;
 
 

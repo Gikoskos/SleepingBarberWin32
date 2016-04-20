@@ -223,21 +223,6 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
         {
             break;
         }
-#ifndef _DEBUG
-extern void ChangeBarberPos(int flag);
-        case WM_KEYDOWN:
-        {
-            switch (wParam) {
-                case VK_UP:
-                case VK_DOWN:
-                    ChangeBarberPos(wParam);
-                    break;
-                default:
-                    break;
-            }
-            break;
-        }
-#endif
         case WM_KEYUP:
         {
             switch (wParam) {
@@ -348,7 +333,6 @@ extern void ChangeBarberPos(int flag);
 #ifdef _DEBUG
 static BOOL LoadDrawDLL(void)
 {
-    //static int curr = 0;
     LPCTSTR drawdll_loaded_fname = TEXT("draw-loaded-0.dll");
 
     if (!CopyFile(TEXT("draw.dll"), drawdll_loaded_fname, FALSE)) {
@@ -361,7 +345,6 @@ static BOOL LoadDrawDLL(void)
         } else {
             fprintf(stderr, "Copying of DLL failed! Error code %lu\n", GetLastError());
         }
-        //curr = !curr;
         return FALSE;
     }
 
@@ -374,7 +357,6 @@ static BOOL LoadDrawDLL(void)
 
         drawdll_func.SetBarbershopDoorState(door_open);
         drawdll_func.ScaleGraphics(curr_resolution);
-        //curr = !curr;
         return TRUE;
     } else {
         fprintf(stderr, "Failed loading library! Errcode %ld\n", GetLastError());
@@ -511,7 +493,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 #ifdef _DEBUG
     FreeLibrary(drawdll_func.to_load);
     DeleteFile(TEXT("draw-loaded-0.dll"));
-    DeleteFile(TEXT("draw-loaded-1.dll"));
 #endif
 
     if (!DeleteBackbuffer(backbuff)) {

@@ -10,9 +10,15 @@
 
 #include "common.h"
 
+enum customer_state {
+    
+    WAITING_ROOM,
+    GETTING_HAIRCUT
+};
+
 typedef struct _customer {
-    float x, y;
-    float width, height;
+    HANDLE hthrd; //the handle of the customer's thread
+    enum customer_state state;
 } customer;
 
 #endif //__CUSTOMER_H

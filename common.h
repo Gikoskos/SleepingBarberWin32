@@ -50,6 +50,8 @@
 #define RGB_PURPLE      RGB(64, 0, 255)
 #define RGB_GREEN       RGB(0, 204, 0)
 #define RGB_RED         RGB(255, 0, 0)
+#define RGB_BLUE        RGB(0, 128, 255)
+#define RGB_YELLOW      RGB(255, 255, 102)
 #define RGB_PURPLEBLUE  RGB(64, 55, 145)
 
 

@@ -12,6 +12,8 @@
 #define BARBERCHAIR_VERTICES   7
 #define CHAIR_VERTICES         8
 
+#define TOTAL_BARBER_PEN_STYLES 6
+
 //animated graphics
 static RECT barber_graphic, customer_graphic[TOTAL_CUSTOMERS];
 
@@ -52,7 +54,6 @@ static const POINT lowres_wall_vertices[WALL_VERTICES] = { //barbershop wall
 }, lowres_character_dimension = {40, 40}; //width and height of the barber and customers' graphics
 
 
-
 static POINT scaled_wall[WALL_VERTICES], scaled_door[DOOR_VERTICES],
              scaled_barberchair[BARBERCHAIR_VERTICES],
              scaled_customerchair[CUSTOMER_CHAIRS][CHAIR_VERTICES],
@@ -62,6 +63,9 @@ static POINT scaled_wall[WALL_VERTICES], scaled_door[DOOR_VERTICES],
 static BOOL barbershop_door_open, chair_occupied[CUSTOMER_CHAIRS];
 
 static int scaled_pen_thickness, scaled_font_size;
+
+const int barber_pen_styles[TOTAL_BARBER_PEN_STYLES] = {PS_DOT, PS_DASHDOT, PS_DASHDOTDOT, PS_DASHDOT, PS_DOT, PS_SOLID};
+static int curr_barber_pen_style;
 
 
 
@@ -194,7 +198,8 @@ void DrawToBuffer(backbuffer_data *buf)
 
     //appendix
     {
-        TCHAR text1[] = _T("B = barber  |  C = customers");
+        TCHAR text1[] = _T("B = barber  |  C = customers  |  Close door with spacebar or 'O'"),
+              text2[] = _T("B = barber  |  C = customers  |  Open door with spacebar or 'O'");
         HFONT apx_font = CreateFont(scaled_font_size, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE,
                                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                     ANTIALIASED_QUALITY, FF_DONTCARE, _T("Verdana"));
@@ -202,7 +207,8 @@ void DrawToBuffer(backbuffer_data *buf)
 
         SetTextColor(buf->hdc, RGB_WHITE);
         SetBkColor(buf->hdc, GetPixel(buf->hdc, 0, 0));
-        TextOut(buf->hdc, 10, 10, text1, ARRAYSIZE(text1));
+        TextOut(buf->hdc, 10, 10, (barbershop_door_open) ? text1  : text2,
+                (barbershop_door_open) ? ARRAYSIZE(text1) : ARRAYSIZE(text2));
 
         SelectFont(buf->hdc, prev_font);
         DeleteFont(apx_font);
@@ -272,36 +278,54 @@ void DrawToBuffer(backbuffer_data *buf)
 
     //draw the characters
     {
-        TCHAR barber_text[] = _T(" B"), customer_text[] = _T("C");
-        HPEN character_pen = CreatePen(PS_SOLID, (scaled_pen_thickness - 1), RGB_RED);
-        HBRUSH character_brush = CreateSolidBrush(RGB_PURPLEBLUE);
+        TCHAR barber_text[] = _T(" B"), customer_text[] = _T(" C");
+        HPEN barber_pen = CreatePen(barber_pen_styles[curr_barber_pen_style], 1, RGB_RED),
+             customer_pen = CreatePen(PS_SOLID, 1, RGB_YELLOW);
+        HBRUSH barber_brush = CreateSolidBrush(RGB_PURPLEBLUE), 
+               customer_brush = CreateSolidBrush(RGB_BLUE);
         HFONT character_font = CreateFont(scaled_font_size + 10, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE,
                                           DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                           ANTIALIASED_QUALITY, FF_DONTCARE, _T("Verdana"));
         prev_font = SelectFont(buf->hdc, character_font);
-        prev_pen = SelectObject(buf->hdc, character_pen);
-        prev_brush = SelectObject(buf->hdc, character_brush);
+        prev_pen = SelectObject(buf->hdc, barber_pen);
+        prev_brush = SelectObject(buf->hdc, barber_brush);
 
         //draw the barber
         Ellipse(buf->hdc, barber_graphic.left, barber_graphic.top, 
                 barber_graphic.right, barber_graphic.bottom);
         SetBkColor(buf->hdc, RGB_PURPLEBLUE);
-        DrawText(buf->hdc, barber_text, ARRAYSIZE(barber_text), &barber_graphic, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        DrawText(buf->hdc, barber_text, ARRAYSIZE(barber_text), &barber_graphic,
+                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
         //draw the customers
-        /*for (int i = 0; i < TOTAL_CUSTOMERS; i++) {
+        SelectObject(buf->hdc, customer_brush);
+        DeleteObject((HGDIOBJ)barber_brush);
+
+        SelectObject(buf->hdc, customer_pen);
+        DeleteObject((HGDIOBJ)barber_pen);
+        for (int i = 0; i < TOTAL_CUSTOMERS; i++) {
             Ellipse(buf->hdc, customer_graphic[i].left, customer_graphic[i].top, 
                     customer_graphic[i].right, customer_graphic[i].bottom);
-            TextOut(buf->hdc, customer_graphic[i].letter.x, customer_graphic[i].letter.y,
-                    customer_text, ARRAYSIZE(customer_text));
-        }*/
+            SetBkColor(buf->hdc, RGB_BLUE);
+            DrawText(buf->hdc, customer_text, ARRAYSIZE(customer_text),
+                     &customer_graphic[i], DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        }
 
         SelectFont(buf->hdc, prev_font);
         SelectObject(buf->hdc, prev_pen);
         SelectObject(buf->hdc, prev_brush);
         DeleteFont(character_font);
-        DeleteObject((HGDIOBJ)character_pen);
-        DeleteObject((HGDIOBJ)character_brush);
+        DeleteObject((HGDIOBJ)customer_brush);
+        DeleteObject((HGDIOBJ)customer_pen);
     }
+}
+
+int GetNumOfEmptyChairs(void)
+{
+    int retvalue;
+
+    for (retvalue = 0; chair_occupied[retvalue] == FALSE && retvalue < CUSTOMER_CHAIRS; retvalue++);
+    return retvalue;
 }
 
 static RECT GetOnBarberChairRect(void)
@@ -317,7 +341,10 @@ static RECT GetOnBarberChairRect(void)
 
 static RECT GetNextToBarberChairRect(void)
 {
-    RECT retvalue = {.left = 340, .top = 330};
+    RECT retvalue;
+
+    retvalue.left = scaled_barberchair[4].x - scaled_character_dimension.x * 1.09;
+    retvalue.top = scaled_barberchair[4].y - 1.6*scaled_character_dimension.y;
     retvalue.right = retvalue.left + scaled_character_dimension.x;
     retvalue.bottom = retvalue.top + scaled_character_dimension.y;
     return retvalue;
@@ -339,39 +366,39 @@ static RECT GetOnEmptyCustomerChairRect(int chair_idx)
 
 static RECT GetNextToWaitingRoomRect(void)
 {
-    RECT retvalue = {.left = 30, .top = 30};
+    RECT retvalue;
+
+    retvalue.left = scaled_customerchair[1][3].x - 2*scaled_character_dimension.x;
+    retvalue.top = scaled_customerchair[1][3].y;
     retvalue.right = retvalue.left + scaled_character_dimension.x;
     retvalue.bottom = retvalue.top + scaled_character_dimension.y;
     return retvalue;
 }
 
-#ifndef _DEBUG
-static int barber_pos = 0;
-void ChangeBarberPos(int flag)
+static RECT GetCustomerQueuePositionRect(UINT position_idx)
 {
-    if (flag == VK_UP) {
-        barber_pos--;
-        if (barber_pos < -1) {
-            barber_pos = CUSTOMER_CHAIRS - 1;
-        }
-    } else if (flag == VK_DOWN) {
-        barber_pos++;
-        if (barber_pos > CUSTOMER_CHAIRS) {
-            barber_pos = 0;
-        }
-    }
-    
+    RECT shop_queue_start = {
+        .top = ((scaled_wall[10].y + scaled_wall[3].y)/2 - scaled_character_dimension.y/2),
+        .left = (scaled_wall[10].x - scaled_character_dimension.x*1.2 - 
+                                     scaled_character_dimension.x*1.2*position_idx)
+    };
+
+    shop_queue_start.right = shop_queue_start.left + scaled_character_dimension.x;
+    shop_queue_start.bottom = shop_queue_start.top + scaled_character_dimension.y;
+
+    return shop_queue_start;
 }
-#endif
 
 void UpdateState()
 {
-#ifndef _DEBUG
-    barber_graphic = (barber_pos == -1 || barber_pos == CUSTOMER_CHAIRS) ? GetOnBarberChairRect() : GetOnEmptyCustomerChairRect(barber_pos);
-#else
-    barber_graphic = GetOnBarberChairRect();
-#endif
+    curr_barber_pen_style = TOTAL_BARBER_PEN_STYLES - 1;
+    //curr_barber_pen_style = (curr_barber_pen_style < TOTAL_BARBER_PEN_STYLES - 1) ? (curr_barber_pen_style + 1) : 0;
+
+    barber_graphic = GetNextToWaitingRoomRect();
     
-    /*static int i = 0;
-    if (++i >= CUSTOMER_CHAIRS) i = 0;*/
+    for (int i = 0; i < TOTAL_CUSTOMERS; i++) {
+        if (i < CUSTOMER_CHAIRS)
+            customer_graphic[i] = GetOnEmptyCustomerChairRect(i);
+        else customer_graphic[i] = GetCustomerQueuePositionRect(i - CUSTOMER_CHAIRS);
+    }
 }
