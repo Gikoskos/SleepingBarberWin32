@@ -4,8 +4,8 @@
 \***********************************************/
 
 #include "draw.h"
-
-#define CUSTOMER_CHAIRS  5
+#include "barber.h"
+#include "customer.h"
 
 #define WALL_VERTICES         12
 #define DOOR_VERTICES          4
@@ -15,7 +15,7 @@
 #define TOTAL_BARBER_PEN_STYLES 6
 
 //animated graphics
-static RECT barber_graphic, customer_graphic[TOTAL_CUSTOMERS];
+static RECT barber_graphic, *customer_graphic = NULL;
 
 //unchanged graphics
 static const POINT lowres_wall_vertices[WALL_VERTICES] = { //barbershop wall
@@ -67,13 +67,15 @@ static int scaled_pen_thickness, scaled_font_size;
 const int barber_pen_styles[TOTAL_BARBER_PEN_STYLES] = {PS_DOT, PS_DASHDOT, PS_DASHDOTDOT, PS_DASHDOT, PS_DOT, PS_SOLID};
 static int curr_barber_pen_style;
 
-
+static int current_numofcustomers;
 
 /* Prototypes for functions with local scope */
 static RECT GetOnBarberChairRect(void);
 static RECT GetNextToBarberChairRect(void);
-static RECT GetOnEmptyCustomerChairRect(int chair_idx);
+static RECT GetOnEmptyCustomerChairRect(UINT chair_idx);
 static RECT GetNextToWaitingRoomRect(void);
+static RECT GetCustomerQueuePositionRect(UINT position_idx);
+static RECT GetInvalidPositionRect(void);
 #if 0
 static POINT RotatePoint(POINT axis, POINT vertex, double angle);
 static void GetRotatedDoorPoints(double angle);
@@ -115,15 +117,17 @@ BOOL GetBarbershopDoorState(void)
     return barbershop_door_open;
 }
 
-void ScaleGraphics(int scaling_idx)
+void ScaleGraphics(int scaling_exp)
 {
-    scaled_pen_thickness = scaling_idx + 1;
-    scaled_font_size = (int)(14 * (pow(1.25, (double)scaling_idx)));
-    scaled_character_dimension.x = (int)(lowres_character_dimension.x * (pow(1.25, (double)scaling_idx)));
-    scaled_character_dimension.y = (int)(lowres_character_dimension.y * (pow(1.25, (double)scaling_idx)));
+    const double scaling_base = 1.25;
+
+    scaled_pen_thickness = scaling_exp + 1;
+    scaled_font_size = (int)(14 * (pow(scaling_base, (double)scaling_exp)));
+    scaled_character_dimension.x = (int)(lowres_character_dimension.x * (pow(scaling_base, (double)scaling_exp)));
+    scaled_character_dimension.y = (int)(lowres_character_dimension.y * (pow(scaling_base, (double)scaling_exp)));
 
     for (int i = 0; i < WALL_VERTICES; i++) {
-        if (!scaling_idx) {
+        if (!scaling_exp) {
             scaled_wall[i] = lowres_wall_vertices[i];
 
             if (i < DOOR_VERTICES) {
@@ -139,36 +143,36 @@ void ScaleGraphics(int scaling_idx)
                     scaled_customerchair[j][i] = lowres_customerchair_vertices[j][i];
             }
         } else {
-            double tmp = (double)(lowres_wall_vertices[i].x * (pow(1.25, (double)scaling_idx)));
+            double tmp = (double)(lowres_wall_vertices[i].x * (pow(scaling_base, (double)scaling_exp)));
             scaled_wall[i].x = (LONG)tmp;
 
-            tmp = (double)(lowres_wall_vertices[i].y * (pow(1.25, (double)scaling_idx)));
+            tmp = (double)(lowres_wall_vertices[i].y * (pow(scaling_base, (double)scaling_exp)));
             scaled_wall[i].y = (LONG)tmp;
 
             if (i < DOOR_VERTICES) {
                 tmp = (double)(((barbershop_door_open) ? lowres_opened_door_vertices[i].x : lowres_closed_door_vertices[i].x)
-                               * (pow(1.25, (double)scaling_idx)));
+                               * (pow(scaling_base, (double)scaling_exp)));
                 scaled_door[i].x = (LONG)tmp;
 
                 tmp = (double)(((barbershop_door_open) ? lowres_opened_door_vertices[i].y : lowres_closed_door_vertices[i].y)
-                               * (pow(1.25, (double)scaling_idx)));
+                               * (pow(scaling_base, (double)scaling_exp)));
                 scaled_door[i].y = (LONG)tmp;
             }
 
             if (i < BARBERCHAIR_VERTICES) {
-                tmp = (double)(lowres_barberchair_vertices[i].x * (pow(1.25, (double)scaling_idx)));
+                tmp = (double)(lowres_barberchair_vertices[i].x * (pow(scaling_base, (double)scaling_exp)));
                 scaled_barberchair[i].x = tmp;
 
-                tmp = (double)(lowres_barberchair_vertices[i].y * (pow(1.25, (double)scaling_idx)));
+                tmp = (double)(lowres_barberchair_vertices[i].y * (pow(scaling_base, (double)scaling_exp)));
                 scaled_barberchair[i].y = tmp;
             }
 
             if (i < CHAIR_VERTICES) {
                 for (int j = 0; j < CUSTOMER_CHAIRS; j++) {
-                    tmp = (double)(lowres_customerchair_vertices[j][i].x * (pow(1.25, (double)scaling_idx)));
+                    tmp = (double)(lowres_customerchair_vertices[j][i].x * (pow(scaling_base, (double)scaling_exp)));
                     scaled_customerchair[j][i].x = tmp;
 
-                    tmp = (double)(lowres_customerchair_vertices[j][i].y * (pow(1.25, (double)scaling_idx)));
+                    tmp = (double)(lowres_customerchair_vertices[j][i].y * (pow(scaling_base, (double)scaling_exp)));
                     scaled_customerchair[j][i].y = tmp;
                 }
             }
@@ -303,7 +307,7 @@ void DrawToBuffer(backbuffer_data *buf)
 
         SelectObject(buf->hdc, customer_pen);
         DeleteObject((HGDIOBJ)barber_pen);
-        for (int i = 0; i < TOTAL_CUSTOMERS; i++) {
+        for (int i = 0; i < current_numofcustomers; i++) {
             Ellipse(buf->hdc, customer_graphic[i].left, customer_graphic[i].top, 
                     customer_graphic[i].right, customer_graphic[i].bottom);
             SetBkColor(buf->hdc, RGB_BLUE);
@@ -350,11 +354,11 @@ static RECT GetNextToBarberChairRect(void)
     return retvalue;
 }
 
-static RECT GetOnEmptyCustomerChairRect(int chair_idx)
+static RECT GetOnEmptyCustomerChairRect(UINT chair_idx)
 {
     RECT retvalue = {0, 0, 0, 0};
 
-    if (chair_idx < 0 || chair_idx >= CUSTOMER_CHAIRS) return retvalue;
+    if (chair_idx >= CUSTOMER_CHAIRS) return retvalue;
 
     //adding a scaled value here to push the character into the chair for all resolutions
     retvalue.left = scaled_customerchair[chair_idx][CHAIR_VERTICES - 1].x + scaled_character_dimension.x / 3;
@@ -389,16 +393,68 @@ static RECT GetCustomerQueuePositionRect(UINT position_idx)
     return shop_queue_start;
 }
 
-void UpdateState()
+static RECT GetInvalidPositionRect(void)
 {
-    curr_barber_pen_style = TOTAL_BARBER_PEN_STYLES - 1;
-    //curr_barber_pen_style = (curr_barber_pen_style < TOTAL_BARBER_PEN_STYLES - 1) ? (curr_barber_pen_style + 1) : 0;
+    RECT retvalue;
 
-    barber_graphic = GetNextToWaitingRoomRect();
-    
-    for (int i = 0; i < TOTAL_CUSTOMERS; i++) {
-        if (i < CUSTOMER_CHAIRS)
-            customer_graphic[i] = GetOnEmptyCustomerChairRect(i);
-        else customer_graphic[i] = GetCustomerQueuePositionRect(i - CUSTOMER_CHAIRS);
+    retvalue.left = retvalue.right = -scaled_character_dimension.x;
+    retvalue.top = retvalue.bottom = -scaled_character_dimension.y;
+    return retvalue;
+}
+
+void UpdateState(LONG numofcustomers, int *statesofcustomers, int stateofbarber)
+{
+    if ((numofcustomers != current_numofcustomers) && (numofcustomers >= 0)) {
+        CleanupGraphics();
+        current_numofcustomers = numofcustomers;
+
+        if (current_numofcustomers)
+            customer_graphic = win_malloc(sizeof(RECT)*current_numofcustomers);
     }
+
+    curr_barber_pen_style = TOTAL_BARBER_PEN_STYLES - 1;
+    switch (stateofbarber) {
+        case SLEEPING:
+            barber_graphic = GetOnBarberChairRect();
+            break;
+        case CUTTING_HAIR:
+            curr_barber_pen_style = (curr_barber_pen_style < TOTAL_BARBER_PEN_STYLES - 1) ? (curr_barber_pen_style + 1) : 0;
+            barber_graphic = GetNextToBarberChairRect();
+            break;
+        case CHECKING_WAITING_ROOM:
+            barber_graphic = GetNextToWaitingRoomRect();
+            break;
+        case BARBER_DONE:
+        default:
+            barber_graphic = GetInvalidPositionRect();
+            break;
+    }
+
+    for (int i = 0; i < current_numofcustomers; i++) {
+        switch (statesofcustomers[i]) {
+            case WAITTING_IN_QUEUE:
+                customer_graphic[i] = GetCustomerQueuePositionRect(i);
+                break;
+            case WAKING_UP_BARBER:
+                customer_graphic[i] = GetNextToBarberChairRect();
+                break;
+            case SITTING_IN_WAITING_ROOM:
+                customer_graphic[i] = GetOnEmptyCustomerChairRect(i);
+                break;
+            case GETTING_HAIRCUT:
+                customer_graphic[i] = GetOnBarberChairRect();
+                break;
+            case CUSTOMER_DONE:
+            default:
+                customer_graphic[i] = GetInvalidPositionRect();
+                break;
+        }
+    }
+}
+
+void CleanupGraphics(void)
+{
+    if (customer_graphic) win_free(customer_graphic);
+
+    customer_graphic = NULL;
 }

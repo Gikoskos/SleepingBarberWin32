@@ -103,19 +103,23 @@ bool deleteFIFOqueue(FIFOqueue *queue, int flag)
                 switch (flag) {
                 case MALLOC:
                     free(to_delete->data);
+                    to_delete->data = NULL;
                     break;
                 case WIN_MALLOC:
                     q_free(to_delete->data);
+                    to_delete->data = NULL;
                     break;
                 default:
                     break;
                 }
             }
             q_free(to_delete);
+            to_delete = NULL;
             queue->total_nodes--;
         }
     }
 
     q_free(queue);
+    queue = (FIFOqueue*)NULL;
     return true;
 }

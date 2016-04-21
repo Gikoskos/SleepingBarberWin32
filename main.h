@@ -11,7 +11,7 @@
 #include "common.h"
 
 #define TOTAL_RESOLUTIONS 3
-#define TOTAL_CUSTOMERS  10
+#define CUSTOMER_CHAIRS  5
 
 typedef struct _backbuffer_data {
     HBITMAP hBitmap;
@@ -31,5 +31,11 @@ enum {
     MEDIUM_WND,
     LARGE_WND
 };
+
+extern TCHAR *ReadyCustomersSemaphoreName,
+             *BarberIsReadyMutexName,
+             *WRAccessToSeatsMutexName;
+
+extern LONG numOfFreeSeats;
 
 #endif //__MAIN_H

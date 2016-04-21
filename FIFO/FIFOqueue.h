@@ -8,9 +8,9 @@
 
 #include <stdbool.h>
 
-#define MALLOC        0x000a
-#define WIN_MALLOC    0x000b
-#define AUTO          0x000c
+#define MALLOC_FREE_DATA         0x000a
+#define WIN_MALLOC_FREE_DATA     0x000b
+#define DONT_DELETE_DATA         0x000c
 
 typedef struct _FIFOnode {
     void *data;

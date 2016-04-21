@@ -45,6 +45,6 @@ int main(int argc, char *argv[])
         printf("FIFOdequeue = %d\n", *(int*)FIFOdequeue(test));
     }
 
-    deleteFIFOqueue(test, AUTO);
+    deleteFIFOqueue(test, DONT_DELETE_DATA);
     return 0;
 }

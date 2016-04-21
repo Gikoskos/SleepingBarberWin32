@@ -12,11 +12,12 @@
 #include "main.h"
 
 
-void DrawBufferToWindow(HWND to, backbuffer_data *from);
-void DrawToBuffer(backbuffer_data *buf);
-void UpdateState();
-void ScaleGraphics(int scaling_idx);
+void ScaleGraphics(int scaling_exp);
 void SetBarbershopDoorState(BOOL new_state);
 BOOL GetBarbershopDoorState(void);
 int GetNumOfEmptyChairs(void);
+void DrawBufferToWindow(HWND to, backbuffer_data *from);
+void DrawToBuffer(backbuffer_data *buf);
+void UpdateState(LONG numofcustomers, int *statesofcustomers, int stateofbarber);
+void CleanupGraphics(void);
 #endif //__DRAW_H

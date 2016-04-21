@@ -11,17 +11,20 @@
 #include "common.h"
 
 enum barber_state {
-    SLEEPING,
+    SLEEPING = 0x0000cccc,
     CUTTING_HAIR,
-    GET_NEXT_CUSTOMER
+    CHECKING_WAITING_ROOM,
+    BARBER_DONE
 };
 
 typedef struct _barber_data {
     HANDLE hthrd; //the handle of the barber's thread
-    enum barber_state state;
+    LONG state;
 } barber_data;
 
 
-barber_data *InitBarber(void);
+barber_data *InitBarber(int InitialState);
+LONG GetBarberState(barber_data *barber);
+void SetBarberState(barber_data *barber, LONG new_state);
 BOOL DeleteBarber(barber_data *to_delete);
 #endif //__BARBER_H

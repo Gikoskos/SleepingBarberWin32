@@ -15,7 +15,8 @@ typedef struct _dll_func_address {
     HMODULE to_load;
     void (*DrawBufferToWindow)(HWND, backbuffer_data*);
     void (*DrawToBuffer)(backbuffer_data*);
-    void (*UpdateState)(void);
+    void (*UpdateState)(LONG, int*, int);
+    void (*CleanupGraphics)(void);
     void (*ScaleGraphics)(int);
     void (*SetBarbershopDoorState)(BOOL);
 } dll_func_address;
@@ -25,7 +26,13 @@ static BOOL door_open = FALSE;
 #endif
 
 
+TCHAR *ReadyCustomersSemaphoreName = _T("ReadyCustomersSem"),
+      *BarberIsReadyMutexName = _T("BarberIsReadyMtx"),
+      *WRAccessToSeatsMutexName = _T("WRAccessToSeatsMtx");;
+
 int curr_resolution = SMALL_WND, prev_resolution = SMALL_WND;
+
+LONG numOfFreeSeats = CUSTOMER_CHAIRS;
 
 //the resolutions here have to go from smaller to bigger for the resizing animation to work
 POINT resolutions[TOTAL_RESOLUTIONS] = {
@@ -33,12 +40,12 @@ POINT resolutions[TOTAL_RESOLUTIONS] = {
     {800, 600},
     {1000, 750}
 };
+LONG total_customers = 0;
 
 
 //is TRUE when the game is running and false when it's not
 static BOOL running = FALSE;
 static HINSTANCE g_hInst;
-BOOL barbershop_door_open = FALSE;
 
 
 /* Prototypes for functions with local scope */
@@ -335,6 +342,9 @@ static BOOL LoadDrawDLL(void)
 {
     LPCTSTR drawdll_loaded_fname = TEXT("draw-loaded-0.dll");
 
+    //don't leak memory while reloading the DLL
+    if (drawdll_func.CleanupGraphics) drawdll_func.CleanupGraphics();
+
     if (!CopyFile(TEXT("draw.dll"), drawdll_loaded_fname, FALSE)) {
         if (GetLastError() == ERROR_FILE_NOT_FOUND) {
             fprintf(stderr, "Copying of DLL failed! File not found.\n");
@@ -351,9 +361,10 @@ static BOOL LoadDrawDLL(void)
     if ((drawdll_func.to_load = LoadLibrary(drawdll_loaded_fname)) != NULL) {
         drawdll_func.DrawBufferToWindow = (void(*)(HWND, backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawBufferToWindow");
         drawdll_func.DrawToBuffer = (void(*)(backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawToBuffer");
-        drawdll_func.UpdateState = (void(*)(void))GetProcAddress(drawdll_func.to_load, "UpdateState");
+        drawdll_func.UpdateState = (void(*)(LONG, int*, int))GetProcAddress(drawdll_func.to_load, "UpdateState");
         drawdll_func.ScaleGraphics = (void(*)(int))GetProcAddress(drawdll_func.to_load, "ScaleGraphics");
         drawdll_func.SetBarbershopDoorState = (void(*)(BOOL))GetProcAddress(drawdll_func.to_load, "SetBarbershopDoorState");
+        drawdll_func.CleanupGraphics = (void(*)(void))GetProcAddress(drawdll_func.to_load, "CleanupGraphics");
 
         drawdll_func.SetBarbershopDoorState(door_open);
         drawdll_func.ScaleGraphics(curr_resolution);
@@ -382,6 +393,8 @@ static FILETIME GetDrawDLLLastWriteTime()
 
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
+    const int max_customers = 6;
+
     window_data SBarberMainWindow = {
         .title = TEXT("SleepingBarber Win32")
     };
@@ -400,13 +413,25 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     if (!LoadDrawDLL())
         return 1;
 #endif
-    /*FIFOqueue *customer_queue = newFIFOqueue();
 
-    for (int i = 0; i < 10; i++) {
-        customer *new = win_malloc(sizeof(customer));
-        FIFOenqueue(customer_queue, (void*)new);
+    HANDLE ReadyCustomersSem = CreateSemaphore(NULL, 0, max_customers, ReadyCustomersSemaphoreName);
+    HANDLE BarberIsReadyMtx = CreateMutex(NULL, FALSE, BarberIsReadyMutexName);
+    HANDLE WRAccessToSeatsMtx = CreateMutex(NULL, FALSE, WRAccessToSeatsMutexName);
+
+    customer_data **customer_array = win_malloc(sizeof(customer_data) * max_customers);
+    int customer_states[6];
+    FIFOqueue *customer_queue = newFIFOqueue();
+
+    for (int i = 0; i < max_customers; i++) {
+        customer_array[i] = NewCustomer(0);
+        FIFOenqueue(customer_queue, (void*)customer_array[i]);
     }
-    FIFOenqueue(customer_queue, NULL);*/
+
+    barber_data *barber = InitBarber(0);
+    if (!barber || !ReadyCustomersSem || !BarberIsReadyMtx || !WRAccessToSeatsMtx) {
+        PRINT_ERR_DEBUG();
+        return 1;
+    }
 
     if (!ConvertWinToClientResolutions()) {
         MessageBox(NULL, TEXT("Failed converting resolutions!"), TEXT("Something happened!"), MB_ICONERROR | MB_OK);
@@ -418,14 +443,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     drawdll_func.ScaleGraphics(curr_resolution);
 #else
     ScaleGraphics(curr_resolution);
-#endif
-
-#if defined(_DEBUG) && defined(_MSC_VER)
-    //Create the console for debugging
-    AllocConsole();
-    AttachConsole(GetCurrentProcessId());
-    //https://en.wikipedia.org/wiki/Device_file#DOS.2C_OS.2F2.2C_and_Windows
-    freopen("CON", "w", stdout);
 #endif
 
     g_hInst = hInstance;
@@ -480,28 +497,40 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
         while (GetTickCount() > next_game_tick && loops < MAX_FRAMESKIP) {
             HandleMessages(SBarberMainWindow.hwnd);
+            for (int i = 0; i < max_customers; i++) {
+                if (*(customer_array + i) != NULL) {
+                    customer_states[i] = (int)(*(customer_array + i))->state;
+                } else {
+                    customer_states[i] = CUSTOMER_DONE;
+                }
+            }
 #ifdef _DEBUG
-            if (drawdll_func.UpdateState) drawdll_func.UpdateState();
+            if (drawdll_func.UpdateState) drawdll_func.UpdateState(total_customers, customer_states, GetBarberState(barber));
 #else
-            UpdateState();
+            UpdateState(total_customers, customer_states, GetBarberState(barber));
 #endif
             next_game_tick += SKIP_TICKS;
             loops++;
         }
     }
 
+                /* Cleanup goes here */
+    for (int i = 0; i < max_customers; i++) {
+        DeleteCustomer(*(customer_array + i));
+    }
+    win_free(customer_array);
+    deleteFIFOqueue(customer_queue, DONT_DELETE_DATA);
 #ifdef _DEBUG
+    drawdll_func.CleanupGraphics();
     FreeLibrary(drawdll_func.to_load);
     DeleteFile(TEXT("draw-loaded-0.dll"));
+#else
+    CleanupGraphics();
 #endif
+    if (!DeleteBarber(barber)) fprintf(stderr, "Error freeing up barber resources!\n");
 
     if (!DeleteBackbuffer(backbuff)) {
         fprintf(stderr, "Error deleting backbuff!\n");
     }
-    //deleteFIFOqueue(customer_queue, WIN_MALLOC);
-
-#if defined(_DEBUG) && defined(_MSC_VER)
-    FreeConsole();
-#endif
     return 0;
 }

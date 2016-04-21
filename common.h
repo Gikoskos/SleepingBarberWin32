@@ -54,6 +54,9 @@
 #define RGB_YELLOW      RGB(255, 255, 102)
 #define RGB_PURPLEBLUE  RGB(64, 55, 145)
 
+#define PRINT_ERR_DEBUG() fprintf(stderr, "Error %lu at line %d and function %s!\n", \
+                                  GetLastError(), __LINE__, __func__)
+
 
 #define IDI_LARGEBARBERWIN_ICON 210
 #define IDI_SMALLBARBERWIN_ICON 211

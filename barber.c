@@ -15,7 +15,7 @@ static UINT CALLBACK BarberThread(void *args);
 
 
 
-barber_data *InitBarber(void)
+barber_data *InitBarber(int InitialState)
 {
     if (BarberIsInitialized) {
         fprintf(stderr, "Can't create more than one barber!\n");
@@ -30,16 +30,72 @@ barber_data *InitBarber(void)
     }
 
     new->state = SLEEPING;
-    new->hthrd = (HANDLE)_beginthreadex(BarberThread, 0, NULL, NULL, CREATE_SUSPENDED, NULL);
+    new->hthrd = (HANDLE)_beginthreadex(NULL, 0, BarberThread, (LPVOID)new, InitialState, NULL);
     return new;
 }
 
-static UINT CALLBACK BarberThread(void *args)
+static UINT CALLBACK BarberThread(LPVOID args)
 {
-    UNREFERENCED_PARAMETER(args);
-    //barber logic goes here
+    barber_data *barber = (barber_data*)args;
+    HANDLE ReadyCustomersSem = OpenSemaphore(SEMAPHORE_ALL_ACCESS, FALSE, ReadyCustomersSemaphoreName);
+    HANDLE BarberIsReadyMtx = OpenMutex(MUTEX_ALL_ACCESS, FALSE, BarberIsReadyMutexName);
+    HANDLE WRAccessToSeatsMtx = OpenMutex(MUTEX_ALL_ACCESS, FALSE, WRAccessToSeatsMutexName);
+
+    if (!ReadyCustomersSem || !BarberIsReadyMtx || !WRAccessToSeatsMtx) {
+        PRINT_ERR_DEBUG();
+       _endthreadex(1);
+       return 1;
+    }
+
+#define TIMEOUT 200
+    Sleep(TIMEOUT);
+    while (GetBarberState(barber) != BARBER_DONE) {
+        Sleep(TIMEOUT);
+        SetBarberState(barber, SLEEPING);
+        Sleep(TIMEOUT);
+        WaitForSingleObject(ReadyCustomersSem, INFINITE);
+        Sleep(TIMEOUT);
+        WaitForSingleObject(WRAccessToSeatsMtx, INFINITE);
+        Sleep(TIMEOUT);
+
+        if (numOfFreeSeats != CUSTOMER_CHAIRS) {
+            Sleep(TIMEOUT);
+            SetBarberState(barber, CHECKING_WAITING_ROOM);
+        } else {
+            Sleep(TIMEOUT);
+            SetBarberState(barber, CUTTING_HAIR);
+            Sleep(TIMEOUT);
+            numOfFreeSeats++;
+        }
+        Sleep(TIMEOUT);
+        ReleaseMutex(BarberIsReadyMtx);
+        Sleep(TIMEOUT);
+        ReleaseMutex(WRAccessToSeatsMtx);
+        Sleep(TIMEOUT);
+        SetBarberState(barber, CUTTING_HAIR);
+        //SetBarberState(barber, BARBER_DONE);
+    }
+    CloseHandle(barber->hthrd);
+    barber->hthrd = NULL;
     _endthreadex(0);
     return 0;
+}
+
+LONG GetBarberState(barber_data *barber)
+{
+    if (!barber) return BARBER_DONE;
+
+    LONG retvalue;
+
+    InterlockedExchange(&retvalue, barber->state);
+    return retvalue;
+}
+
+void SetBarberState(barber_data *barber, LONG new_state)
+{
+    if (barber) {
+        InterlockedExchange(&barber->state, new_state);
+    }
 }
 
 BOOL DeleteBarber(barber_data *to_delete)
@@ -49,6 +105,7 @@ BOOL DeleteBarber(barber_data *to_delete)
     if (to_delete != NULL) {
         retvalue = ((to_delete->hthrd != NULL) ? CloseHandle(to_delete->hthrd) : TRUE) ? TRUE : FALSE;
         win_free(to_delete);
+        to_delete = NULL;
     }
     return retvalue;
 }
