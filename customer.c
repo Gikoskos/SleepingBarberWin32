@@ -43,22 +43,19 @@ static UINT CALLBACK CustomerThread(LPVOID args)
        _endthreadex(1);
        return 1;
     }
-#define TIMEOUT 200
-    Sleep(TIMEOUT);
+#define TIMEOUT 2000
     while (GetCustomerState(customer) != CUSTOMER_DONE) {
-        Sleep(TIMEOUT);
         SetCustomerState(customer, WAITTING_IN_QUEUE);
         Sleep(TIMEOUT);
         WaitForSingleObject(WRAccessToSeatsMtx, INFINITE);
-        Sleep(TIMEOUT);
         if (numOfFreeSeats > 0) {
-            numOfFreeSeats--;
-            Sleep(TIMEOUT);
-            if (numOfFreeSeats == CUSTOMER_CHAIRS - 1) SetCustomerState(customer, WAKING_UP_BARBER);
-            else SetCustomerState(customer, SITTING_IN_WAITING_ROOM);
-            Sleep(TIMEOUT);
+            if (numOfFreeSeats == CUSTOMER_CHAIRS) {
+                SetCustomerState(customer, WAKING_UP_BARBER);
+            } else {
+                numOfFreeSeats--;
+                SetCustomerState(customer, SITTING_IN_WAITING_ROOM);
+            }
             ReleaseSemaphore(ReadyCustomersSem, 1, NULL);
-            Sleep(TIMEOUT);
             ReleaseMutex(WRAccessToSeatsMtx);
             Sleep(TIMEOUT);
             WaitForSingleObject(BarberIsReadyMtx, INFINITE);
@@ -70,7 +67,6 @@ static UINT CALLBACK CustomerThread(LPVOID args)
         }
 
         SetCustomerState(customer, CUSTOMER_DONE);
-        Sleep(TIMEOUT);
     }
     InterlockedDecrement(&total_customers);
     CloseHandle(customer->hthrd);

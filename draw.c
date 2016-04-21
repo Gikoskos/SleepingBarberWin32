@@ -72,7 +72,7 @@ static int current_numofcustomers;
 /* Prototypes for functions with local scope */
 static RECT GetOnBarberChairRect(void);
 static RECT GetNextToBarberChairRect(void);
-static RECT GetOnEmptyCustomerChairRect(UINT chair_idx);
+static RECT GetOnEmptyCustomerChairRect(void);
 static RECT GetNextToWaitingRoomRect(void);
 static RECT GetCustomerQueuePositionRect(UINT position_idx);
 static RECT GetInvalidPositionRect(void);
@@ -324,11 +324,23 @@ void DrawToBuffer(backbuffer_data *buf)
     }
 }
 
-int GetNumOfEmptyChairs(void)
+static int GetNumOfEmptyChairs(void)
+{
+    int retvalue = 0;
+
+    for (int i = 0; i < CUSTOMER_CHAIRS; i++)
+        if (chair_occupied[i] == FALSE) retvalue++;
+
+    return retvalue;
+}
+
+static int GetNextEmptyChairIndex(void)
 {
     int retvalue;
 
-    for (retvalue = 0; chair_occupied[retvalue] == FALSE && retvalue < CUSTOMER_CHAIRS; retvalue++);
+    for (int i = 0; i < CUSTOMER_CHAIRS; i++)
+        if (chair_occupied[retvalue] == FALSE) retvalue = i;
+
     return retvalue;
 }
 
@@ -354,17 +366,21 @@ static RECT GetNextToBarberChairRect(void)
     return retvalue;
 }
 
-static RECT GetOnEmptyCustomerChairRect(UINT chair_idx)
+static RECT GetOnEmptyCustomerChairRect(void)
 {
     RECT retvalue = {0, 0, 0, 0};
 
-    if (chair_idx >= CUSTOMER_CHAIRS) return retvalue;
+    if (!GetNumOfEmptyChairs()) return retvalue;
 
+    int empty_chair = GetNextEmptyChairIndex();
+
+    chair_occupied[empty_chair] = TRUE;
     //adding a scaled value here to push the character into the chair for all resolutions
-    retvalue.left = scaled_customerchair[chair_idx][CHAIR_VERTICES - 1].x + scaled_character_dimension.x / 3;
-    retvalue.top = scaled_customerchair[chair_idx][CHAIR_VERTICES - 1].y;
+    retvalue.left = scaled_customerchair[empty_chair][CHAIR_VERTICES - 1].x + scaled_character_dimension.x / 3;
+    retvalue.top = scaled_customerchair[empty_chair][CHAIR_VERTICES - 1].y;
     retvalue.right = retvalue.left + scaled_character_dimension.x;
     retvalue.bottom = retvalue.top + scaled_character_dimension.y;
+    
     return retvalue;
 }
 
@@ -404,6 +420,8 @@ static RECT GetInvalidPositionRect(void)
 
 void UpdateState(LONG numofcustomers, int *statesofcustomers, int stateofbarber)
 {
+    for (int i = 0; i < CUSTOMER_CHAIRS; i++) chair_occupied[i] = FALSE;
+
     if ((numofcustomers != current_numofcustomers) && (numofcustomers >= 0)) {
         CleanupGraphics();
         current_numofcustomers = numofcustomers;
@@ -439,7 +457,9 @@ void UpdateState(LONG numofcustomers, int *statesofcustomers, int stateofbarber)
                 customer_graphic[i] = GetNextToBarberChairRect();
                 break;
             case SITTING_IN_WAITING_ROOM:
-                customer_graphic[i] = GetOnEmptyCustomerChairRect(i);
+                customer_graphic[i] = GetOnEmptyCustomerChairRect();
+                if (!customer_graphic[i].left)
+                    customer_graphic[i] = GetInvalidPositionRect();
                 break;
             case GETTING_HAIRCUT:
                 customer_graphic[i] = GetOnBarberChairRect();
