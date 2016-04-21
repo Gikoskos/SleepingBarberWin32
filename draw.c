@@ -114,7 +114,10 @@ void SetBarbershopDoorState(BOOL new_state)
 
 BOOL GetBarbershopDoorState(void)
 {
-    return barbershop_door_open;
+    LONG retvalue, tmp = (LONG)barbershop_door_open;
+
+    InterlockedExchange(&retvalue, tmp);
+    return (BOOL)retvalue;
 }
 
 void ScaleGraphics(int scaling_exp)
@@ -448,6 +451,7 @@ void UpdateState(LONG numofcustomers, int *statesofcustomers, int stateofbarber)
             break;
     }
 
+    //@TODO: fix empty chair count
     for (int i = 0; i < current_numofcustomers; i++) {
         switch (statesofcustomers[i]) {
             case WAITTING_IN_QUEUE:

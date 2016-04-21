@@ -1,7 +1,7 @@
 CC              = gcc
 CFLAGS          = -std=c11
 DBGFLAGS        = -Wall -g -ggdb -D_DEBUG
-RLSFLAGS        = -mwindows 
+RLSFLAGS        =  
 SRC             = main.c customer.c barber.c res.o
 MORE_WARNINGS   = -Wextra -pedantic
 LINKER          = -lcomctl32 -lgdi32 -luxtheme -lgdiplus FIFOqueue.dll.a

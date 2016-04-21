@@ -44,25 +44,26 @@ static UINT CALLBACK CustomerThread(LPVOID args)
        return 1;
     }
 #define TIMEOUT 2000
+    Sleep(TIMEOUT);
     while (GetCustomerState(customer) != CUSTOMER_DONE) {
         SetCustomerState(customer, WAITTING_IN_QUEUE);
-        Sleep(TIMEOUT);
+#ifndef _DEBUG
+        while(!GetBarbershopDoorState()) Sleep(10);
+#endif
         WaitForSingleObject(WRAccessToSeatsMtx, INFINITE);
         if (numOfFreeSeats > 0) {
-            if (numOfFreeSeats == CUSTOMER_CHAIRS) {
+            numOfFreeSeats--;
+            if (numOfFreeSeats == CUSTOMER_CHAIRS - 1) {
                 SetCustomerState(customer, WAKING_UP_BARBER);
             } else {
-                numOfFreeSeats--;
                 SetCustomerState(customer, SITTING_IN_WAITING_ROOM);
             }
+            Sleep(TIMEOUT);
             ReleaseSemaphore(ReadyCustomersSem, 1, NULL);
             ReleaseMutex(WRAccessToSeatsMtx);
-            Sleep(TIMEOUT);
             WaitForSingleObject(BarberIsReadyMtx, INFINITE);
-            Sleep(TIMEOUT);
             SetCustomerState(customer, GETTING_HAIRCUT);
         } else {
-            Sleep(TIMEOUT);
             ReleaseMutex(WRAccessToSeatsMtx);
         }
 

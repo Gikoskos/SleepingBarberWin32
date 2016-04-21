@@ -414,24 +414,25 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         return 1;
 #endif
 
-    HANDLE ReadyCustomersSem = CreateSemaphore(NULL, 0, max_customers, ReadyCustomersSemaphoreName);
+    HANDLE ReadyCustomersSem = CreateSemaphore(NULL, 0, 1, ReadyCustomersSemaphoreName);
     HANDLE BarberIsReadyMtx = CreateMutex(NULL, FALSE, BarberIsReadyMutexName);
     HANDLE WRAccessToSeatsMtx = CreateMutex(NULL, FALSE, WRAccessToSeatsMutexName);
 
     customer_data **customer_array = win_malloc(sizeof(customer_data) * max_customers);
-    int customer_states[6];
+    int customer_states[max_customers];
     FIFOqueue *customer_queue = newFIFOqueue();
-
-    for (int i = 0; i < max_customers; i++) {
-        customer_array[i] = NewCustomer(0);
-        FIFOenqueue(customer_queue, (void*)customer_array[i]);
-    }
 
     barber_data *barber = InitBarber(0);
     if (!barber || !ReadyCustomersSem || !BarberIsReadyMtx || !WRAccessToSeatsMtx) {
         PRINT_ERR_DEBUG();
         return 1;
     }
+
+    for (int i = 0; i < max_customers; i++) {
+        customer_array[i] = NewCustomer(0);
+        FIFOenqueue(customer_queue, (void*)customer_array[i]);
+    }
+
 
     if (!ConvertWinToClientResolutions()) {
         MessageBox(NULL, TEXT("Failed converting resolutions!"), TEXT("Something happened!"), MB_ICONERROR | MB_OK);
