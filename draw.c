@@ -339,12 +339,8 @@ static int GetNumOfEmptyChairs(void)
 
 static int GetNextEmptyChairIndex(void)
 {
-    int retvalue;
-
     for (int i = 0; i < CUSTOMER_CHAIRS; i++)
-        if (chair_occupied[retvalue] == FALSE) retvalue = i;
-
-    return retvalue;
+        if (chair_occupied[i] == FALSE) return i;
 }
 
 static RECT GetOnBarberChairRect(void)
@@ -376,6 +372,7 @@ static RECT GetOnEmptyCustomerChairRect(void)
     if (!GetNumOfEmptyChairs()) return retvalue;
 
     int empty_chair = GetNextEmptyChairIndex();
+    printf("empty chair:%d\n", empty_chair);
 
     chair_occupied[empty_chair] = TRUE;
     //adding a scaled value here to push the character into the chair for all resolutions

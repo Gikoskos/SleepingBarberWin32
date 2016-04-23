@@ -47,27 +47,29 @@ static UINT CALLBACK BarberThread(LPVOID args)
        return 1;
     }
 
-#define TIMEOUT 2000
+#define TIMEOUT 1000
     Sleep(TIMEOUT);
     while (GetBarberState(barber) != BARBER_DONE) {
+
         SetBarberState(barber, SLEEPING);
-        while (WaitForSingleObject(ReadyCustomersSem, 0L) == WAIT_OBJECT_0) {
-            WaitForSingleObject(WRAccessToSeatsMtx, INFINITE);
-            if (numOfFreeSeats != CUSTOMER_CHAIRS) {
-                SetBarberState(barber, CHECKING_WAITING_ROOM);
-                Sleep(TIMEOUT);
-            } else {
-                numOfFreeSeats++;
-            }
-            ReleaseMutex(BarberIsReadyMtx);
-            ReleaseMutex(WRAccessToSeatsMtx);
-            SetBarberState(barber, CUTTING_HAIR);
+        WaitForSingleObject(ReadyCustomersSem, INFINITE);
+        WaitForSingleObject(WRAccessToSeatsMtx, INFINITE);
+        if (numOfFreeSeats != CUSTOMER_CHAIRS) {
+            SetBarberState(barber, CHECKING_WAITING_ROOM);
             Sleep(TIMEOUT);
+        } else {
+            numOfFreeSeats++;
         }
+        ReleaseMutex(BarberIsReadyMtx);
+        ReleaseMutex(WRAccessToSeatsMtx);
+        SetBarberState(barber, CUTTING_HAIR);
+        //Sleep(TIMEOUT);
         //SetBarberState(barber, BARBER_DONE);
     }
-    CloseHandle(barber->hthrd);
-    barber->hthrd = NULL;
+    CloseHandle(ReadyCustomersSem);
+    CloseHandle(BarberIsReadyMtx);
+    CloseHandle(WRAccessToSeatsMtx);
+    DeleteBarber(barber);
     _endthreadex(0);
     return 0;
 }

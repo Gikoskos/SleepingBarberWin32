@@ -163,8 +163,8 @@ static BOOL ResizeWindow(HWND hwnd, int new_size, int old_size)
 
     //no idea why 'i' needs to be less or equal than 'up_to.x' and 
     //'j' just less than 'up_to.y', but the resolutions work correctly like this
+    HDWP winnum = BeginDeferWindowPos(1);
     for (i = 1, j = 1; (i <= up_to.x) || (j < up_to.y);) {
-        HDWP winnum = BeginDeferWindowPos(1);
         if (!winnum) continue;
 
         if (old_size < new_size) {
@@ -174,11 +174,11 @@ static BOOL ResizeWindow(HWND hwnd, int new_size, int old_size)
             DeferWindowPos(winnum, hwnd, HWND_TOP, 0, 0, width - i, height - j,
                            SWP_NOMOVE | SWP_NOOWNERZORDER | SWP_NOZORDER);
         }
-        EndDeferWindowPos(winnum);
 
         i += (i <= up_to.x) ? 1 : 0;
         j += (j < up_to.y) ? 1 : 0;
     }
+    EndDeferWindowPos(winnum);
 
     return TRUE;
 }
@@ -342,9 +342,6 @@ static BOOL LoadDrawDLL(void)
 {
     LPCTSTR drawdll_loaded_fname = TEXT("draw-loaded-0.dll");
 
-    //don't leak memory while reloading the DLL
-    if (drawdll_func.CleanupGraphics) drawdll_func.CleanupGraphics();
-
     if (!CopyFile(TEXT("draw.dll"), drawdll_loaded_fname, FALSE)) {
         if (GetLastError() == ERROR_FILE_NOT_FOUND) {
             fprintf(stderr, "Copying of DLL failed! File not found.\n");
@@ -480,10 +477,12 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 #ifdef _DEBUG
         currLastWriteTime = GetDrawDLLLastWriteTime();
         if (CompareFileTime(&currLastWriteTime, &prevLastWriteTime) && currLastWriteTime.dwLowDateTime) {
+            //don't leak memory while reloading the DLL
+            if (drawdll_func.CleanupGraphics) drawdll_func.CleanupGraphics();
             Sleep(200);
             FreeLibrary(drawdll_func.to_load);
             printf("RELOADING\n");
-            LoadDrawDLL();
+            if (!LoadDrawDLL()) PRINT_ERR_DEBUG();
             prevLastWriteTime.dwLowDateTime = currLastWriteTime.dwLowDateTime;
             prevLastWriteTime.dwHighDateTime = currLastWriteTime.dwHighDateTime;
         }
@@ -514,6 +513,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
             loops++;
         }
     }
+    //stop the barber thread
+    SetBarberState(barber, BARBER_DONE);
 
                 /* Cleanup goes here */
     for (int i = 0; i < max_customers; i++) {
@@ -530,8 +531,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 #endif
     if (!DeleteBarber(barber)) fprintf(stderr, "Error freeing up barber resources!\n");
 
-    if (!DeleteBackbuffer(backbuff)) {
-        fprintf(stderr, "Error deleting backbuff!\n");
-    }
+    if (!DeleteBackbuffer(backbuff)) fprintf(stderr, "Error deleting backbuff!\n");
+
     return 0;
 }
