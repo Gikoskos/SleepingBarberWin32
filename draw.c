@@ -134,7 +134,7 @@ void ScaleGraphics(int scaling_exp)
             scaled_wall[i] = lowres_wall_vertices[i];
 
             if (i < DOOR_VERTICES) {
-                scaled_door[i] = (barbershop_door_open) ? lowres_opened_door_vertices[i] : lowres_closed_door_vertices[i];
+                scaled_door[i] = (GetBarbershopDoorState()) ? lowres_opened_door_vertices[i] : lowres_closed_door_vertices[i];
             }
 
             if (i < BARBERCHAIR_VERTICES) {
@@ -153,11 +153,11 @@ void ScaleGraphics(int scaling_exp)
             scaled_wall[i].y = (LONG)tmp;
 
             if (i < DOOR_VERTICES) {
-                tmp = (double)(((barbershop_door_open) ? lowres_opened_door_vertices[i].x : lowres_closed_door_vertices[i].x)
+                tmp = (double)(((GetBarbershopDoorState()) ? lowres_opened_door_vertices[i].x : lowres_closed_door_vertices[i].x)
                                * (pow(scaling_base, (double)scaling_exp)));
                 scaled_door[i].x = (LONG)tmp;
 
-                tmp = (double)(((barbershop_door_open) ? lowres_opened_door_vertices[i].y : lowres_closed_door_vertices[i].y)
+                tmp = (double)(((GetBarbershopDoorState()) ? lowres_opened_door_vertices[i].y : lowres_closed_door_vertices[i].y)
                                * (pow(scaling_base, (double)scaling_exp)));
                 scaled_door[i].y = (LONG)tmp;
             }
@@ -203,7 +203,7 @@ void DrawToBuffer(backbuffer_data *buf)
     PatBlt(buf->hdc, 0, 0, buf->coords.right, buf->coords.bottom, BLACKNESS);
     FillRect(buf->hdc, &buf->coords, (HBRUSH)GetStockObject(DKGRAY_BRUSH));
 
-    //appendix
+    //text
     {
         TCHAR text1[] = _T("B = barber  |  C = customers  |  Close door with spacebar or 'O'"),
               text2[] = _T("B = barber  |  C = customers  |  Open door with spacebar or 'O'");
@@ -214,8 +214,10 @@ void DrawToBuffer(backbuffer_data *buf)
 
         SetTextColor(buf->hdc, RGB_WHITE);
         SetBkColor(buf->hdc, GetPixel(buf->hdc, 0, 0));
-        TextOut(buf->hdc, 10, 10, (barbershop_door_open) ? text1  : text2,
-                (barbershop_door_open) ? ARRAYSIZE(text1) : ARRAYSIZE(text2));
+        if (GetBarbershopDoorState())
+            TextOut(buf->hdc, 10, 10, text1, ARRAYSIZE(text1));
+        else
+            TextOut(buf->hdc, 10, 10, text2, ARRAYSIZE(text2));
 
         SelectFont(buf->hdc, prev_font);
         DeleteFont(apx_font);
@@ -372,7 +374,6 @@ static RECT GetOnEmptyCustomerChairRect(void)
     if (!GetNumOfEmptyChairs()) return retvalue;
 
     int empty_chair = GetNextEmptyChairIndex();
-    printf("empty chair:%d\n", empty_chair);
 
     chair_occupied[empty_chair] = TRUE;
     //adding a scaled value here to push the character into the chair for all resolutions

@@ -26,9 +26,11 @@ static BOOL door_open = FALSE;
 #endif
 
 
-TCHAR *ReadyCustomersSemaphoreName = _T("ReadyCustomersSem"),
-      *BarberIsReadyMutexName = _T("BarberIsReadyMtx"),
-      *WRAccessToSeatsMutexName = _T("WRAccessToSeatsMtx");;
+HANDLE ReadyCustomersSem = NULL;
+HANDLE BarberIsReadyMtx = NULL;
+HANDLE WRAccessToSeatsMtx = NULL;
+HANDLE KillAllThreadsEvt = NULL;
+
 
 int curr_resolution = SMALL_WND, prev_resolution = SMALL_WND;
 
@@ -390,6 +392,9 @@ static FILETIME GetDrawDLLLastWriteTime()
 
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
+    const TCHAR *ReadyCustomersSemaphoreName = _T("ReadyCustomersSem"),
+                *BarberIsReadyMutexName = _T("BarberIsReadyMtx"),
+                *WRAccessToSeatsMutexName = _T("WRAccessToSeatsMtx");
     const int max_customers = 6;
 
     window_data SBarberMainWindow = {
@@ -411,9 +416,10 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         return 1;
 #endif
 
-    HANDLE ReadyCustomersSem = CreateSemaphore(NULL, 0, 1, ReadyCustomersSemaphoreName);
-    HANDLE BarberIsReadyMtx = CreateMutex(NULL, FALSE, BarberIsReadyMutexName);
-    HANDLE WRAccessToSeatsMtx = CreateMutex(NULL, FALSE, WRAccessToSeatsMutexName);
+    ReadyCustomersSem = CreateSemaphore(NULL, 0, CUSTOMER_CHAIRS, ReadyCustomersSemaphoreName);
+    BarberIsReadyMtx = CreateMutex(NULL, FALSE, BarberIsReadyMutexName);
+    WRAccessToSeatsMtx = CreateMutex(NULL, FALSE, WRAccessToSeatsMutexName);
+    KillAllThreadsEvt = CreateEvent(NULL, TRUE, FALSE, NULL);
 
     customer_data **customer_array = win_malloc(sizeof(customer_data) * max_customers);
     int customer_states[max_customers];
@@ -513,8 +519,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
             loops++;
         }
     }
-    //stop the barber thread
-    SetBarberState(barber, BARBER_DONE);
+    //stop the running threads
+    SetEvent(KillAllThreadsEvt);
 
                 /* Cleanup goes here */
     for (int i = 0; i < max_customers; i++) {
@@ -522,6 +528,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     }
     win_free(customer_array);
     deleteFIFOqueue(customer_queue, DONT_DELETE_DATA);
+    if (!DeleteBarber(barber)) fprintf(stderr, "Error freeing up barber resources!\n");
+
 #ifdef _DEBUG
     drawdll_func.CleanupGraphics();
     FreeLibrary(drawdll_func.to_load);
@@ -529,7 +537,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 #else
     CleanupGraphics();
 #endif
-    if (!DeleteBarber(barber)) fprintf(stderr, "Error freeing up barber resources!\n");
 
     if (!DeleteBackbuffer(backbuff)) fprintf(stderr, "Error deleting backbuff!\n");
 

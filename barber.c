@@ -8,6 +8,8 @@
 #include "barber.h"
 #include "FIFOqueue.h"
 
+
+
 static BOOL BarberIsInitialized = FALSE;
 
 /* Prototypes for functions with local scope */
@@ -37,40 +39,30 @@ barber_data *InitBarber(int InitialState)
 static UINT CALLBACK BarberThread(LPVOID args)
 {
     barber_data *barber = (barber_data*)args;
-    HANDLE ReadyCustomersSem = OpenSemaphore(SEMAPHORE_ALL_ACCESS, FALSE, ReadyCustomersSemaphoreName);
-    HANDLE BarberIsReadyMtx = OpenMutex(MUTEX_ALL_ACCESS, FALSE, BarberIsReadyMutexName);
-    HANDLE WRAccessToSeatsMtx = OpenMutex(MUTEX_ALL_ACCESS, FALSE, WRAccessToSeatsMutexName);
 
-    if (!ReadyCustomersSem || !BarberIsReadyMtx || !WRAccessToSeatsMtx) {
-        PRINT_ERR_DEBUG();
-       _endthreadex(1);
-       return 1;
+    if (!ReadyCustomersSem || !BarberIsReadyMtx || !WRAccessToSeatsMtx || !KillAllThreadsEvt) {
+        return 1;
     }
 
-#define TIMEOUT 1000
-    Sleep(TIMEOUT);
-    while (GetBarberState(barber) != BARBER_DONE) {
+    while (GetBarberState(barber) != BARBER_DONE &&
+           WaitForSingleObject(KillAllThreadsEvt, 0L) == WAIT_TIMEOUT) {
 
         SetBarberState(barber, SLEEPING);
         WaitForSingleObject(ReadyCustomersSem, INFINITE);
         WaitForSingleObject(WRAccessToSeatsMtx, INFINITE);
         if (numOfFreeSeats != CUSTOMER_CHAIRS) {
             SetBarberState(barber, CHECKING_WAITING_ROOM);
-            Sleep(TIMEOUT);
+            WAIT_UNTIL_TIMEOUT_OR_DIE(1);
         } else {
             numOfFreeSeats++;
         }
         ReleaseMutex(BarberIsReadyMtx);
         ReleaseMutex(WRAccessToSeatsMtx);
         SetBarberState(barber, CUTTING_HAIR);
-        //Sleep(TIMEOUT);
+        WAIT_UNTIL_TIMEOUT_OR_DIE(1);
         //SetBarberState(barber, BARBER_DONE);
     }
-    CloseHandle(ReadyCustomersSem);
-    CloseHandle(BarberIsReadyMtx);
-    CloseHandle(WRAccessToSeatsMtx);
-    DeleteBarber(barber);
-    _endthreadex(0);
+
     return 0;
 }
 

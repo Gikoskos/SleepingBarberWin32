@@ -5,9 +5,10 @@
 
 #include "main.h"
 #include "customer.h"
-#include "draw.h"
 #include "barber.h"
+#include "draw.h" //for GetBarbershopDoorState()
 #include "FIFOqueue.h"
+
 
 extern LONG total_customers;
 
@@ -34,18 +35,14 @@ customer_data *NewCustomer(int InitialState)
 static UINT CALLBACK CustomerThread(LPVOID args)
 {
     customer_data *customer = (customer_data*)args;
-    HANDLE ReadyCustomersSem = OpenSemaphore(SEMAPHORE_ALL_ACCESS, FALSE, ReadyCustomersSemaphoreName);
-    HANDLE BarberIsReadyMtx = OpenMutex(MUTEX_ALL_ACCESS, FALSE, BarberIsReadyMutexName);
-    HANDLE WRAccessToSeatsMtx = OpenMutex(MUTEX_ALL_ACCESS, FALSE, WRAccessToSeatsMutexName);
 
-    if (!ReadyCustomersSem || !BarberIsReadyMtx || !WRAccessToSeatsMtx) {
-        PRINT_ERR_DEBUG();
-       _endthreadex(1);
-       return 1;
+    if (!ReadyCustomersSem || !BarberIsReadyMtx || !WRAccessToSeatsMtx || !KillAllThreadsEvt) {
+        return 1;
     }
-#define TIMEOUT 1000
+
     //Sleep(TIMEOUT);
-    while (GetCustomerState(customer) != CUSTOMER_DONE) {
+    while (GetCustomerState(customer) != CUSTOMER_DONE &&
+           WaitForSingleObject(KillAllThreadsEvt, 0L) == WAIT_TIMEOUT) {
         SetCustomerState(customer, WAITTING_IN_QUEUE);
 #ifndef _DEBUG
         while(!GetBarbershopDoorState()) Sleep(10);
@@ -58,11 +55,12 @@ static UINT CALLBACK CustomerThread(LPVOID args)
             } else {
                 SetCustomerState(customer, SITTING_IN_WAITING_ROOM);
             }
-            //Sleep(TIMEOUT);
             ReleaseSemaphore(ReadyCustomersSem, 1, NULL);
             ReleaseMutex(WRAccessToSeatsMtx);
             WaitForSingleObject(BarberIsReadyMtx, INFINITE);
+            WAIT_UNTIL_TIMEOUT_OR_DIE(1);
             SetCustomerState(customer, GETTING_HAIRCUT);
+            WAIT_UNTIL_TIMEOUT_OR_DIE(1);
         } else {
             ReleaseMutex(WRAccessToSeatsMtx);
         }
@@ -70,10 +68,7 @@ static UINT CALLBACK CustomerThread(LPVOID args)
         SetCustomerState(customer, CUSTOMER_DONE);
     }
     InterlockedDecrement(&total_customers);
-    CloseHandle(ReadyCustomersSem);
-    CloseHandle(BarberIsReadyMtx);
-    CloseHandle(WRAccessToSeatsMtx);
-    _endthreadex(0);
+
     return 0;
 }
 
