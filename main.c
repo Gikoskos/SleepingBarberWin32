@@ -62,6 +62,24 @@ static inline BOOL ConvertWinToClientResolutions(void);
 static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 
+LONG GetFreeCustomerSeats(void)
+{
+    LONG retvalue;
+
+    InterlockedExchange(&retvalue, numOfFreeSeats);
+    return retvalue;
+}
+
+void IncFreeCustomerSeats(void)
+{
+    InterlockedIncrement(&numOfFreeSeats);
+}
+
+void DecFreeCustomerSeats(void)
+{
+    InterlockedDecrement(&numOfFreeSeats);
+}
+
 static backbuffer_data *NewBackbuffer(HWND hwnd)
 {
     if (!hwnd)
@@ -163,10 +181,15 @@ static BOOL ResizeWindow(HWND hwnd, int new_size, int old_size)
     up_to.x = labs(resolutions[new_size].x - resolutions[old_size].x);
     up_to.y = labs(resolutions[new_size].y - resolutions[old_size].y);
 
+#ifdef _DEBUG //disable the window resizing animation in debugging versions
+    HDWP winnum = BeginDeferWindowPos(1);
     //no idea why 'i' needs to be less or equal than 'up_to.x' and 
     //'j' just less than 'up_to.y', but the resolutions work correctly like this
-    HDWP winnum = BeginDeferWindowPos(1);
     for (i = 1, j = 1; (i <= up_to.x) || (j < up_to.y);) {
+#else
+    for (i = 1, j = 1; (i <= up_to.x) || (j < up_to.y);) {
+        HDWP winnum = BeginDeferWindowPos(1);
+#endif
         if (!winnum) continue;
 
         if (old_size < new_size) {
@@ -179,8 +202,13 @@ static BOOL ResizeWindow(HWND hwnd, int new_size, int old_size)
 
         i += (i <= up_to.x) ? 1 : 0;
         j += (j < up_to.y) ? 1 : 0;
+#ifdef _DEBUG
     }
     EndDeferWindowPos(winnum);
+#else
+        EndDeferWindowPos(winnum);
+    }
+#endif
 
     return TRUE;
 }
@@ -254,7 +282,7 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
             }
             break;
         }
-#ifdef _DEBUG
+#if 0
         case WM_MOUSEMOVE:
         {
             cursor_pos.x = GET_X_LPARAM(lParam);

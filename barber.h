@@ -10,6 +10,7 @@
 
 #include "common.h"
 
+
 enum barber_state {
     SLEEPING = 0x0000cccc,
     CUTTING_HAIR,

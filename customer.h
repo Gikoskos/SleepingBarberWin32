@@ -10,6 +10,7 @@
 
 #include "common.h"
 
+
 enum customer_state {
     WAITTING_IN_QUEUE = 0x0000aaaa,
     WAKING_UP_BARBER,

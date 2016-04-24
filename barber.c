@@ -9,6 +9,14 @@
 #include "FIFOqueue.h"
 
 
+#define TIMEOUT 2000
+
+#define EXIT_LOOP_IF_ASSERT(x) \
+if (x) {\
+    break;\
+}
+
+
 
 static BOOL BarberIsInitialized = FALSE;
 
@@ -36,30 +44,33 @@ barber_data *InitBarber(int InitialState)
     return new;
 }
 
+#define BLOCK_UNTIL_TIMEOUT_OR_BREAK() \
+EXIT_LOOP_IF_ASSERT(WaitForSingleObject(KillAllThreadsEvt, TIMEOUT) == WAIT_OBJECT_0);
+
 static UINT CALLBACK BarberThread(LPVOID args)
 {
-    barber_data *barber = (barber_data*)args;
-
-    if (!ReadyCustomersSem || !BarberIsReadyMtx || !WRAccessToSeatsMtx || !KillAllThreadsEvt) {
+    if (!ReadyCustomersSem || !BarberIsReadyMtx || !KillAllThreadsEvt) {
         return 1;
     }
+
+    barber_data *barber = (barber_data*)args;
+    HANDLE ReadyCustomersOrDieObj[2] = {KillAllThreadsEvt, ReadyCustomersSem};
+
 
     while (GetBarberState(barber) != BARBER_DONE &&
            WaitForSingleObject(KillAllThreadsEvt, 0L) == WAIT_TIMEOUT) {
 
         SetBarberState(barber, SLEEPING);
-        WaitForSingleObject(ReadyCustomersSem, INFINITE);
-        WaitForSingleObject(WRAccessToSeatsMtx, INFINITE);
-        if (numOfFreeSeats != CUSTOMER_CHAIRS) {
-            SetBarberState(barber, CHECKING_WAITING_ROOM);
-            WAIT_UNTIL_TIMEOUT_OR_DIE(1);
-        } else {
-            numOfFreeSeats++;
-        }
+        EXIT_LOOP_IF_ASSERT(WaitForMultipleObjects(2, ReadyCustomersOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
+        printf("numOfFreeSeats = %ld\n", GetFreeCustomerSeats());
+        IncFreeCustomerSeats();
+
+        SetBarberState(barber, CHECKING_WAITING_ROOM);
+        BLOCK_UNTIL_TIMEOUT_OR_BREAK();
+
         ReleaseMutex(BarberIsReadyMtx);
-        ReleaseMutex(WRAccessToSeatsMtx);
         SetBarberState(barber, CUTTING_HAIR);
-        WAIT_UNTIL_TIMEOUT_OR_DIE(1);
+        BLOCK_UNTIL_TIMEOUT_OR_BREAK();
         //SetBarberState(barber, BARBER_DONE);
     }
 

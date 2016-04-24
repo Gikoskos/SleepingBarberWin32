@@ -13,13 +13,6 @@
 #define TOTAL_RESOLUTIONS 3
 #define CUSTOMER_CHAIRS  5
 
-#define TIMEOUT 2000
-
-#define WAIT_UNTIL_TIMEOUT_OR_DIE(x) \
-    if (WaitForSingleObject(KillAllThreadsEvt, x*TIMEOUT) != WAIT_TIMEOUT) {\
-        break;\
-    }
-
 
 typedef struct _backbuffer_data {
     HBITMAP hBitmap;
@@ -40,8 +33,9 @@ enum {
     LARGE_WND
 };
 
-extern HANDLE ReadyCustomersSem, BarberIsReadyMtx, WRAccessToSeatsMtx, KillAllThreadsEvt;
+extern HANDLE ReadyCustomersSem, BarberIsReadyMtx, KillAllThreadsEvt;
 
-extern LONG numOfFreeSeats;
-
+LONG GetFreeCustomerSeats(void);
+void IncFreeCustomerSeats(void);
+void DecFreeCustomerSeats(void);
 #endif //__MAIN_H

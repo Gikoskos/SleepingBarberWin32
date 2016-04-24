@@ -10,6 +10,14 @@
 #include "FIFOqueue.h"
 
 
+#define TIMEOUT 2000
+
+#define EXIT_LOOP_IF_ASSERT(x) \
+if (x) {\
+    break;\
+}
+
+
 extern LONG total_customers;
 
 /* Prototypes for functions with local scope */
@@ -32,40 +40,41 @@ customer_data *NewCustomer(int InitialState)
     return new;
 }
 
+#define BLOCK_UNTIL_TIMEOUT_OR_BREAK() \
+EXIT_LOOP_IF_ASSERT(WaitForSingleObject(KillAllThreadsEvt, TIMEOUT) == WAIT_OBJECT_0);
+
 static UINT CALLBACK CustomerThread(LPVOID args)
 {
-    customer_data *customer = (customer_data*)args;
-
-    if (!ReadyCustomersSem || !BarberIsReadyMtx || !WRAccessToSeatsMtx || !KillAllThreadsEvt) {
+    if (!ReadyCustomersSem || !BarberIsReadyMtx || !KillAllThreadsEvt) {
         return 1;
     }
 
-    //Sleep(TIMEOUT);
+    customer_data *customer = (customer_data*)args;
+    HANDLE BarberIsReadyOrDieObj[2] = {KillAllThreadsEvt, BarberIsReadyMtx};
+
+
     while (GetCustomerState(customer) != CUSTOMER_DONE &&
            WaitForSingleObject(KillAllThreadsEvt, 0L) == WAIT_TIMEOUT) {
+
         SetCustomerState(customer, WAITTING_IN_QUEUE);
 #ifndef _DEBUG
         while(!GetBarbershopDoorState()) Sleep(10);
+#else
+        BLOCK_UNTIL_TIMEOUT_OR_BREAK();
 #endif
-        WaitForSingleObject(WRAccessToSeatsMtx, INFINITE);
-        if (numOfFreeSeats > 0) {
-            numOfFreeSeats--;
-            if (numOfFreeSeats == CUSTOMER_CHAIRS - 1) {
-                SetCustomerState(customer, WAKING_UP_BARBER);
-            } else {
-                SetCustomerState(customer, SITTING_IN_WAITING_ROOM);
-            }
-            ReleaseSemaphore(ReadyCustomersSem, 1, NULL);
-            ReleaseMutex(WRAccessToSeatsMtx);
-            WaitForSingleObject(BarberIsReadyMtx, INFINITE);
-            WAIT_UNTIL_TIMEOUT_OR_DIE(1);
-            SetCustomerState(customer, GETTING_HAIRCUT);
-            WAIT_UNTIL_TIMEOUT_OR_DIE(1);
-        } else {
-            ReleaseMutex(WRAccessToSeatsMtx);
-        }
 
-        SetCustomerState(customer, CUSTOMER_DONE);
+        if (GetFreeCustomerSeats() > 0) {
+
+            DecFreeCustomerSeats();
+
+            SetCustomerState(customer, SITTING_IN_WAITING_ROOM);
+
+            ReleaseSemaphore(ReadyCustomersSem, 1, NULL);
+            EXIT_LOOP_IF_ASSERT(WaitForMultipleObjects(2, BarberIsReadyOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
+            SetCustomerState(customer, GETTING_HAIRCUT);
+            BLOCK_UNTIL_TIMEOUT_OR_BREAK();
+            SetCustomerState(customer, CUSTOMER_DONE);
+        }
     }
     InterlockedDecrement(&total_customers);
 
