@@ -54,24 +54,23 @@ static UINT CALLBACK BarberThread(LPVOID args)
     }
 
     barber_data *barber = (barber_data*)args;
+    //BOOL done = FALSE;
     HANDLE ReadyCustomersOrDieObj[2] = {KillAllThreadsEvt, ReadyCustomersSem};
 
 
-    while (GetBarberState(barber) != BARBER_DONE &&
-           WaitForSingleObject(KillAllThreadsEvt, 0L) == WAIT_TIMEOUT) {
+    while (/*!done && */(WaitForSingleObject(KillAllThreadsEvt, 0L) == WAIT_TIMEOUT)) {
 
         SetBarberState(barber, SLEEPING);
         EXIT_LOOP_IF_ASSERT(WaitForMultipleObjects(2, ReadyCustomersOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
-        printf("numOfFreeSeats = %ld\n", GetFreeCustomerSeats());
-        IncFreeCustomerSeats();
 
+        IncFreeCustomerSeats();
         SetBarberState(barber, CHECKING_WAITING_ROOM);
+
         BLOCK_UNTIL_TIMEOUT_OR_BREAK();
 
         ReleaseMutex(BarberIsReadyMtx);
         SetBarberState(barber, CUTTING_HAIR);
-        BLOCK_UNTIL_TIMEOUT_OR_BREAK();
-        //SetBarberState(barber, BARBER_DONE);
+        //BLOCK_UNTIL_TIMEOUT_OR_BREAK();
     }
 
     return 0;
@@ -79,7 +78,7 @@ static UINT CALLBACK BarberThread(LPVOID args)
 
 LONG GetBarberState(barber_data *barber)
 {
-    if (!barber) return BARBER_DONE;
+    if (!barber) return SLEEPING;
 
     LONG retvalue;
 

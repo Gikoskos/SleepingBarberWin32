@@ -20,6 +20,8 @@ if (x) {\
 
 extern LONG total_customers;
 
+static int queue_customer_count = 0;
+
 /* Prototypes for functions with local scope */
 static UINT CALLBACK CustomerThread(void *args);
 
@@ -34,6 +36,8 @@ customer_data *NewCustomer(int InitialState)
         return (customer_data*)NULL;
     }
 
+    new->haircut_success = FALSE;
+    new->queue_num = queue_customer_count++;
     new->state = WAITTING_IN_QUEUE;
     InterlockedIncrement(&total_customers);
     new->hthrd = (HANDLE)_beginthreadex(NULL, 0, CustomerThread, (LPVOID)new, InitialState, NULL);
@@ -50,11 +54,11 @@ static UINT CALLBACK CustomerThread(LPVOID args)
     }
 
     customer_data *customer = (customer_data*)args;
+    BOOL done = FALSE;
     HANDLE BarberIsReadyOrDieObj[2] = {KillAllThreadsEvt, BarberIsReadyMtx};
 
 
-    while (GetCustomerState(customer) != CUSTOMER_DONE &&
-           WaitForSingleObject(KillAllThreadsEvt, 0L) == WAIT_TIMEOUT) {
+    while (!done && (WaitForSingleObject(KillAllThreadsEvt, 0L) == WAIT_TIMEOUT)) {
 
         SetCustomerState(customer, WAITTING_IN_QUEUE);
 #ifndef _DEBUG
@@ -64,16 +68,17 @@ static UINT CALLBACK CustomerThread(LPVOID args)
 #endif
 
         if (GetFreeCustomerSeats() > 0) {
+            SetCustomerState(customer, SITTING_IN_WAITING_ROOM);
 
             DecFreeCustomerSeats();
-
-            SetCustomerState(customer, SITTING_IN_WAITING_ROOM);
 
             ReleaseSemaphore(ReadyCustomersSem, 1, NULL);
             EXIT_LOOP_IF_ASSERT(WaitForMultipleObjects(2, BarberIsReadyOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
             SetCustomerState(customer, GETTING_HAIRCUT);
             BLOCK_UNTIL_TIMEOUT_OR_BREAK();
+            printf("Customer %ld is done!\n", customer->queue_num);
             SetCustomerState(customer, CUSTOMER_DONE);
+            customer->haircut_success = done = TRUE;
         }
     }
     InterlockedDecrement(&total_customers);

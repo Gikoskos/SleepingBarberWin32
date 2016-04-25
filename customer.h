@@ -22,6 +22,9 @@ enum customer_state {
 typedef struct _customer_data {
     HANDLE hthrd; //the handle of the customer's thread
     LONG state; //the customer's state
+    LONG queue_num; //the number of the customer as he is created
+    //1st customer created with NewCustomer() is 1, 2nd is 2, 3rd is 3 etc
+    BOOL haircut_success;
 } customer_data;
 
 customer_data *NewCustomer(int InitialState);

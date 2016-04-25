@@ -443,17 +443,18 @@ void UpdateState(LONG numofcustomers, int *statesofcustomers, int stateofbarber)
         case CHECKING_WAITING_ROOM:
             barber_graphic = GetNextToWaitingRoomRect();
             break;
-        case BARBER_DONE:
         default:
             barber_graphic = GetInvalidPositionRect();
             break;
     }
 
     //@TODO: fix empty chair count
+    int next_queue_pos = 0;
     for (int i = 0; i < current_numofcustomers; i++) {
         switch (statesofcustomers[i]) {
             case WAITTING_IN_QUEUE:
-                customer_graphic[i] = GetCustomerQueuePositionRect(i);
+                customer_graphic[i] = GetCustomerQueuePositionRect(next_queue_pos);
+                next_queue_pos++;
                 break;
             case WAKING_UP_BARBER:
                 customer_graphic[i] = GetNextToBarberChairRect();
