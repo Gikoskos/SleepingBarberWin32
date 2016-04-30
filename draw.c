@@ -434,7 +434,7 @@ void UpdateState(LONG numofcustomers, int *statesofcustomers, int stateofbarber)
     curr_barber_pen_style = TOTAL_BARBER_PEN_STYLES - 1;
     switch (stateofbarber) {
         case SLEEPING:
-            barber_graphic = GetOnBarberChairRect();
+            barber_graphic = GetOnEmptyCustomerChairRect();//GetOnBarberChairRect();
             break;
         case CUTTING_HAIR:
             curr_barber_pen_style = (curr_barber_pen_style < TOTAL_BARBER_PEN_STYLES - 1) ? (curr_barber_pen_style + 1) : 0;

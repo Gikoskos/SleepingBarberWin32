@@ -513,10 +513,14 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         if (CompareFileTime(&currLastWriteTime, &prevLastWriteTime) && currLastWriteTime.dwLowDateTime) {
             //don't leak memory while reloading the DLL
             if (drawdll_func.CleanupGraphics) drawdll_func.CleanupGraphics();
-            Sleep(200);
+            Sleep(200); //waiting for the DLL to compile. If it hasn't finished compiling
+                        //when it's getting loaded, the program will crash
             FreeLibrary(drawdll_func.to_load);
             printf("RELOADING\n");
+
             if (!LoadDrawDLL()) PRINT_ERR_DEBUG();
+
+            currLastWriteTime = GetDrawDLLLastWriteTime();
             prevLastWriteTime.dwLowDateTime = currLastWriteTime.dwLowDateTime;
             prevLastWriteTime.dwHighDateTime = currLastWriteTime.dwHighDateTime;
         }
