@@ -10,6 +10,8 @@
 
 #include "common.h"
 
+#define CUSTOMER_CHAIRS  5
+
 
 enum customer_state {
     WAITTING_IN_QUEUE = 0x0000aaaa,
@@ -30,6 +32,12 @@ typedef struct _customer_data {
 customer_data *NewCustomer(int InitialState);
 LONG GetCustomerState(customer_data *customer);
 void SetCustomerState(customer_data *customer, LONG new_state);
+
+LONG GetNumOfCustomers(void);
+
+LONG GetFreeCustomerSeats(void);
+void IncFreeCustomerSeats(void);
+void DecFreeCustomerSeats(void);
 
 BOOL DeleteCustomer(customer_data *to_delete);
 #endif //__CUSTOMER_H

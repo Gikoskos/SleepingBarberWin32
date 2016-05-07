@@ -6,7 +6,6 @@
 #include "main.h"
 #include "customer.h"
 #include "barber.h"
-#include "FIFOqueue.h"
 #include "draw.h"
 
 
@@ -15,7 +14,7 @@ typedef struct _dll_func_address {
     HMODULE to_load;
     void (*DrawBufferToWindow)(HWND, backbuffer_data*);
     void (*DrawToBuffer)(backbuffer_data*);
-    void (*UpdateState)(LONG, int*, int);
+    void (*UpdateState)(LONG, int*, int, BOOL*, BOOL);
     void (*CleanupGraphics)(void);
     void (*ScaleGraphics)(int);
     void (*SetBarbershopDoorState)(BOOL);
@@ -28,13 +27,14 @@ static BOOL door_open = FALSE;
 
 HANDLE ReadyCustomersSem = NULL;
 HANDLE BarberIsReadyMtx = NULL;
-HANDLE WRAccessToSeatsMtx = NULL;
+HANDLE AccessCustomerFIFOMtx = NULL;
 HANDLE KillAllThreadsEvt = NULL;
+
+FIFOqueue *customer_queue;
 
 
 int curr_resolution = SMALL_WND, prev_resolution = SMALL_WND;
 
-LONG numOfFreeSeats = CUSTOMER_CHAIRS;
 
 //the resolutions here have to go from smaller to bigger for the resizing animation to work
 POINT resolutions[TOTAL_RESOLUTIONS] = {
@@ -42,8 +42,6 @@ POINT resolutions[TOTAL_RESOLUTIONS] = {
     {800, 600},
     {1000, 750}
 };
-LONG total_customers = 0;
-
 
 //is TRUE when the game is running and false when it's not
 static BOOL running = FALSE;
@@ -61,24 +59,6 @@ static inline void HandleMessages(HWND hwnd);
 static inline BOOL ConvertWinToClientResolutions(void);
 static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-
-LONG GetFreeCustomerSeats(void)
-{
-    LONG retvalue;
-
-    InterlockedExchange(&retvalue, numOfFreeSeats);
-    return retvalue;
-}
-
-void IncFreeCustomerSeats(void)
-{
-    InterlockedIncrement(&numOfFreeSeats);
-}
-
-void DecFreeCustomerSeats(void)
-{
-    InterlockedDecrement(&numOfFreeSeats);
-}
 
 static backbuffer_data *NewBackbuffer(HWND hwnd)
 {
@@ -388,13 +368,13 @@ static BOOL LoadDrawDLL(void)
     if ((drawdll_func.to_load = LoadLibrary(drawdll_loaded_fname)) != NULL) {
         drawdll_func.DrawBufferToWindow = (void(*)(HWND, backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawBufferToWindow");
         drawdll_func.DrawToBuffer = (void(*)(backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawToBuffer");
-        drawdll_func.UpdateState = (void(*)(LONG, int*, int))GetProcAddress(drawdll_func.to_load, "UpdateState");
+        drawdll_func.UpdateState = (void(*)(LONG, int*, int, BOOL*, BOOL))GetProcAddress(drawdll_func.to_load, "UpdateState");
         drawdll_func.ScaleGraphics = (void(*)(int))GetProcAddress(drawdll_func.to_load, "ScaleGraphics");
         drawdll_func.SetBarbershopDoorState = (void(*)(BOOL))GetProcAddress(drawdll_func.to_load, "SetBarbershopDoorState");
         drawdll_func.CleanupGraphics = (void(*)(void))GetProcAddress(drawdll_func.to_load, "CleanupGraphics");
 
-        drawdll_func.SetBarbershopDoorState(door_open);
-        drawdll_func.ScaleGraphics(curr_resolution);
+        if (drawdll_func.SetBarbershopDoorState) drawdll_func.SetBarbershopDoorState(door_open);
+        if (drawdll_func.ScaleGraphics) drawdll_func.ScaleGraphics(curr_resolution);
         return TRUE;
     } else {
         fprintf(stderr, "Failed loading library! Errcode %ld\n", GetLastError());
@@ -422,8 +402,9 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 {
     const TCHAR *ReadyCustomersSemaphoreName = _T("ReadyCustomersSem"),
                 *BarberIsReadyMutexName = _T("BarberIsReadyMtx"),
-                *WRAccessToSeatsMutexName = _T("WRAccessToSeatsMtx");
-    const int max_customers = 6;
+                *AccessCustomerFIFOMutexName = _T("AccessCustomerFIFOMtx");
+    const int initial_customers = 6;
+    LONG prev_total_customers;
 
     window_data SBarberMainWindow = {
         .title = TEXT("SleepingBarber Win32")
@@ -446,23 +427,31 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
     ReadyCustomersSem = CreateSemaphore(NULL, 0, CUSTOMER_CHAIRS, ReadyCustomersSemaphoreName);
     BarberIsReadyMtx = CreateMutex(NULL, FALSE, BarberIsReadyMutexName);
-    WRAccessToSeatsMtx = CreateMutex(NULL, FALSE, WRAccessToSeatsMutexName);
+    AccessCustomerFIFOMtx = CreateMutex(NULL, FALSE, AccessCustomerFIFOMutexName);
     KillAllThreadsEvt = CreateEvent(NULL, TRUE, FALSE, NULL);
 
-    customer_data **customer_array = win_malloc(sizeof(customer_data) * max_customers);
-    int customer_states[max_customers];
-    FIFOqueue *customer_queue = newFIFOqueue();
+    customer_queue = newFIFOqueue();
 
     barber_data *barber = InitBarber(0);
-    if (!barber || !ReadyCustomersSem || !BarberIsReadyMtx || !WRAccessToSeatsMtx) {
+    if (!barber || !ReadyCustomersSem || !BarberIsReadyMtx || !AccessCustomerFIFOMtx ||
+        !customer_queue) {
         PRINT_ERR_DEBUG();
         return 1;
     }
 
-    for (int i = 0; i < max_customers; i++) {
+    customer_data **customer_array = win_malloc(sizeof(customer_data) * (size_t)initial_customers);
+    int customer_array_idx = 0;
+    for (int i = 0; i < initial_customers; i++) {
         customer_array[i] = NewCustomer(0);
         FIFOenqueue(customer_queue, (void*)customer_array[i]);
     }
+    prev_total_customers = GetNumOfCustomers();
+    //data to pass to the UpdateState() function to know the current state of each
+    //drawable character and whether to animate their movement or not
+    int *customer_states = win_malloc(sizeof(int) * (size_t)prev_total_customers);
+    int barber_state = (int)GetBarberState(barber);
+    BOOL *animate_customer = win_malloc(sizeof(BOOL) * (size_t)prev_total_customers);
+    BOOL animate_barber = FALSE;
 
 
     if (!ConvertWinToClientResolutions()) {
@@ -499,8 +488,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
                 return 1;
             }
 #ifdef _DEBUG
-            if (drawdll_func.ScaleGraphics)
-                drawdll_func.ScaleGraphics(curr_resolution);
+            if (drawdll_func.ScaleGraphics) drawdll_func.ScaleGraphics(curr_resolution);
 #else
             ScaleGraphics(curr_resolution);
 #endif
@@ -525,8 +513,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
             prevLastWriteTime.dwHighDateTime = currLastWriteTime.dwHighDateTime;
         }
 
-        drawdll_func.DrawToBuffer(backbuff);
-        drawdll_func.DrawBufferToWindow(SBarberMainWindow.hwnd, backbuff);
+        if (drawdll_func.DrawToBuffer) drawdll_func.DrawToBuffer(backbuff);
+        if (drawdll_func.DrawBufferToWindow) drawdll_func.DrawBufferToWindow(SBarberMainWindow.hwnd, backbuff);
 #else
         DrawToBuffer(backbuff);
         DrawBufferToWindow(SBarberMainWindow.hwnd, backbuff);
@@ -535,17 +523,53 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
         while (GetTickCount() > next_game_tick && loops < MAX_FRAMESKIP) {
             HandleMessages(SBarberMainWindow.hwnd);
-            for (int i = 0; i < max_customers; i++) {
-                if (*(customer_array + i) != NULL) {
-                    customer_states[i] = (int)(*(customer_array + i))->state;
+
+            //we check to see if the number of customers has changed
+            LONG tmp = GetNumOfCustomers();
+            if (tmp != prev_total_customers) {
+                if (tmp - prev_total_customers < 0) {//if there are less customers than before
+                    for (; customer_array_idx <= prev_total_customers - tmp - 1; customer_array_idx++) {
+                        printf("deleted customer %ld\n", customer_array[customer_array_idx]->queue_num);
+                        DeleteCustomer(*(customer_array + customer_array_idx)); //we free the customers who finished
+                    }
+                    prev_total_customers = tmp; //the prev customers counter gets updated 
+                                                //with the current number of customers
+
+                } else { //if for some reason the customers are increased while the program is running
+                         //allocate more memory for the new customers
+                    win_realloc(customer_array, sizeof(customer_data) * (size_t)prev_total_customers);
+                }
+
+                win_realloc(customer_states, sizeof(int) * (size_t)prev_total_customers);
+                win_realloc(animate_customer, sizeof(BOOL) * (size_t)prev_total_customers);
+            }
+            tmp = GetBarberState(barber);
+            if (tmp != barber_state) {
+                barber_state = tmp;
+                animate_barber = TRUE;
+            } else {
+                animate_barber = FALSE;
+            }
+
+            for (int i = 0; i < prev_total_customers; i++) {
+                if (*(customer_array + customer_array_idx + i) != NULL) {
+                    int tmp = (int)GetCustomerState(*(customer_array + customer_array_idx + i));
+                    if (customer_states[i] != tmp) {
+                        customer_states[i] = tmp;
+                        animate_customer[i] = TRUE;
+                    } else {
+                        animate_customer[i] = FALSE;
+                    }
                 } else {
+                    //unreachable
                     customer_states[i] = CUSTOMER_DONE;
                 }
             }
 #ifdef _DEBUG
-            if (drawdll_func.UpdateState) drawdll_func.UpdateState(total_customers, customer_states, GetBarberState(barber));
+            if (drawdll_func.UpdateState) drawdll_func.UpdateState(prev_total_customers, customer_states, 
+                                                                   barber_state, animate_customer, animate_barber);
 #else
-            UpdateState(total_customers, customer_states, GetBarberState(barber));
+            UpdateState(prev_total_customers, customer_states, barber_state, animate_customer, animate_barber);
 #endif
             next_game_tick += SKIP_TICKS;
             loops++;
@@ -555,10 +579,14 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     SetEvent(KillAllThreadsEvt);
 
                 /* Cleanup goes here */
-    for (int i = 0; i < max_customers; i++) {
+    for (int i = customer_array_idx; i <= prev_total_customers; i++) {
+        //printf("waiting for thread %ld to finish\n", customer_array[i]->queue_num);
+        WaitForSingleObject(*(customer_array + i), INFINITE);
         DeleteCustomer(*(customer_array + i));
     }
     win_free(customer_array);
+    win_free(customer_states);
+    win_free(animate_customer);
     deleteFIFOqueue(customer_queue, DONT_DELETE_DATA);
     if (!DeleteBarber(barber)) fprintf(stderr, "Error freeing up barber resources!\n");
 

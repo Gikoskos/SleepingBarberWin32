@@ -9,9 +9,9 @@
 #define __MAIN_H
 
 #include "common.h"
+#include "FIFOqueue.h"
 
 #define TOTAL_RESOLUTIONS 3
-#define CUSTOMER_CHAIRS  5
 
 
 typedef struct _backbuffer_data {
@@ -33,9 +33,11 @@ enum {
     LARGE_WND
 };
 
-extern HANDLE ReadyCustomersSem, BarberIsReadyMtx, KillAllThreadsEvt;
+extern HANDLE ReadyCustomersSem,
+              BarberIsReadyMtx,
+              KillAllThreadsEvt,
+              AccessCustomerFIFOMtx;
 
-LONG GetFreeCustomerSeats(void);
-void IncFreeCustomerSeats(void);
-void DecFreeCustomerSeats(void);
+extern FIFOqueue *customer_queue;
+
 #endif //__MAIN_H

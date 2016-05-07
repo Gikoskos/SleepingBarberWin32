@@ -8,6 +8,7 @@
 #ifndef __COMMON_H
 #define __COMMON_H
 
+//target Windows 7
 #ifndef WINVER
 # define WINVER 0x0600
 #endif
@@ -40,7 +41,7 @@
 #define win_free(x) HeapFree(GetProcessHeap(), 0, x)
 //this one isn't actually a wrapper for stdlib malloc since malloc doesn't 0 out the allocated bytes
 #define win_malloc(x) HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY, x)
-#define win_realloc(NULL, x) win_malloc(x)
+#define win_realloc(x, y) HeapReAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY, x, y)
 #define win_calloc(x, y) win_malloc(x * y)
 
 //RGB color macros
@@ -60,5 +61,11 @@
 
 #define IDI_LARGEBARBERWIN_ICON 210
 #define IDI_SMALLBARBERWIN_ICON 211
+
+//helper macro used in loops inside the barber and customer thread functions
+#define BREAK_IF_FALSE(x) \
+if (x) {\
+    break;\
+}
 
 #endif //__COMMON_H

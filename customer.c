@@ -17,15 +17,15 @@ if (x) {\
     break;\
 }
 
-
-extern LONG total_customers;
+static LONG total_customers;
+static LONG numOfFreeSeats = CUSTOMER_CHAIRS;
 
 static int queue_customer_count = 0;
 
 /* Prototypes for functions with local scope */
 static UINT CALLBACK CustomerThread(void *args);
-
-
+static void IncNumOfCustomers(void);
+static void DecNumOfCustomers(void);
 
 customer_data *NewCustomer(int InitialState)
 {
@@ -39,13 +39,13 @@ customer_data *NewCustomer(int InitialState)
     new->haircut_success = FALSE;
     new->queue_num = queue_customer_count++;
     new->state = WAITTING_IN_QUEUE;
-    InterlockedIncrement(&total_customers);
+    IncNumOfCustomers();
     new->hthrd = (HANDLE)_beginthreadex(NULL, 0, CustomerThread, (LPVOID)new, InitialState, NULL);
     return new;
 }
 
 #define BLOCK_UNTIL_TIMEOUT_OR_BREAK() \
-EXIT_LOOP_IF_ASSERT(WaitForSingleObject(KillAllThreadsEvt, TIMEOUT) == WAIT_OBJECT_0);
+BREAK_IF_FALSE(WaitForSingleObject(KillAllThreadsEvt, TIMEOUT) == WAIT_OBJECT_0);
 
 static UINT CALLBACK CustomerThread(LPVOID args)
 {
@@ -56,6 +56,7 @@ static UINT CALLBACK CustomerThread(LPVOID args)
     customer_data *customer = (customer_data*)args;
     BOOL done = FALSE;
     HANDLE BarberIsReadyOrDieObj[2] = {KillAllThreadsEvt, BarberIsReadyMtx};
+    HANDLE AccessFIFOOrDieObj[2] = {KillAllThreadsEvt, AccessCustomerFIFOMtx};
 
 
     while (!done && (WaitForSingleObject(KillAllThreadsEvt, 0L) == WAIT_TIMEOUT)) {
@@ -72,16 +73,31 @@ static UINT CALLBACK CustomerThread(LPVOID args)
 
             DecFreeCustomerSeats();
 
+            for (;;) {
+                if (WaitForMultipleObjects(2, AccessFIFOOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0 + 1) {
+                    if (((customer_data*)customer_queue->head->data)->queue_num == customer->queue_num) {
+                        break;
+                    }
+                } else {
+                    return 1;
+                }
+                ReleaseMutex(AccessCustomerFIFOMtx);
+            }
+
             ReleaseSemaphore(ReadyCustomersSem, 1, NULL);
-            EXIT_LOOP_IF_ASSERT(WaitForMultipleObjects(2, BarberIsReadyOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
+            BREAK_IF_FALSE(WaitForMultipleObjects(2, BarberIsReadyOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
             SetCustomerState(customer, GETTING_HAIRCUT);
             BLOCK_UNTIL_TIMEOUT_OR_BREAK();
             printf("Customer %ld is done!\n", customer->queue_num);
             SetCustomerState(customer, CUSTOMER_DONE);
+            BLOCK_UNTIL_TIMEOUT_OR_BREAK();
+            FIFOdequeue(customer_queue);
+            ReleaseMutex(AccessCustomerFIFOMtx);
             customer->haircut_success = done = TRUE;
         }
     }
-    InterlockedDecrement(&total_customers);
+    DecNumOfCustomers();
+    printf("total_customers = %ld\n", total_customers);
 
     return 0;
 }
@@ -116,4 +132,40 @@ BOOL DeleteCustomer(customer_data *to_delete)
         to_delete = NULL;
     }
     return retvalue;
+}
+
+LONG GetNumOfCustomers(void)
+{
+    LONG retvalue;
+
+    InterlockedExchange(&retvalue, total_customers);
+    return retvalue;
+}
+
+static void IncNumOfCustomers(void)
+{
+    InterlockedIncrement(&total_customers);
+}
+
+static void DecNumOfCustomers(void)
+{
+    InterlockedDecrement(&total_customers);
+}
+
+LONG GetFreeCustomerSeats(void)
+{
+    LONG retvalue;
+
+    InterlockedExchange(&retvalue, numOfFreeSeats);
+    return retvalue;
+}
+
+void IncFreeCustomerSeats(void)
+{
+    InterlockedIncrement(&numOfFreeSeats);
+}
+
+void DecFreeCustomerSeats(void)
+{
+    InterlockedDecrement(&numOfFreeSeats);
 }

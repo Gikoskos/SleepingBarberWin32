@@ -11,11 +11,6 @@
 
 #define TIMEOUT 2000
 
-#define EXIT_LOOP_IF_ASSERT(x) \
-if (x) {\
-    break;\
-}
-
 
 
 static BOOL BarberIsInitialized = FALSE;
@@ -45,7 +40,7 @@ barber_data *InitBarber(int InitialState)
 }
 
 #define BLOCK_UNTIL_TIMEOUT_OR_BREAK() \
-EXIT_LOOP_IF_ASSERT(WaitForSingleObject(KillAllThreadsEvt, TIMEOUT) == WAIT_OBJECT_0);
+BREAK_IF_FALSE(WaitForSingleObject(KillAllThreadsEvt, TIMEOUT) == WAIT_OBJECT_0);
 
 static UINT CALLBACK BarberThread(LPVOID args)
 {
@@ -61,8 +56,9 @@ static UINT CALLBACK BarberThread(LPVOID args)
     while (/*!done && */(WaitForSingleObject(KillAllThreadsEvt, 0L) == WAIT_TIMEOUT)) {
 
         SetBarberState(barber, SLEEPING);
-        EXIT_LOOP_IF_ASSERT(WaitForMultipleObjects(2, ReadyCustomersOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
+        BREAK_IF_FALSE(WaitForMultipleObjects(2, ReadyCustomersOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
 
+        //printf("Barber is ready!");
         IncFreeCustomerSeats();
         SetBarberState(barber, CHECKING_WAITING_ROOM);
 
@@ -70,7 +66,7 @@ static UINT CALLBACK BarberThread(LPVOID args)
 
         ReleaseMutex(BarberIsReadyMtx);
         SetBarberState(barber, CUTTING_HAIR);
-        //BLOCK_UNTIL_TIMEOUT_OR_BREAK();
+        BLOCK_UNTIL_TIMEOUT_OR_BREAK();
     }
 
     return 0;

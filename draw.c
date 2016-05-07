@@ -419,39 +419,44 @@ static RECT GetInvalidPositionRect(void)
     return retvalue;
 }
 
-void UpdateState(LONG numofcustomers, int *statesofcustomers, int stateofbarber)
+void UpdateState(LONG num_of_customers, int *customer_states, int barber_state,
+                 BOOL *animate_customer, BOOL animate_barber)
 {
     for (int i = 0; i < CUSTOMER_CHAIRS; i++) chair_occupied[i] = FALSE;
 
-    if ((numofcustomers != current_numofcustomers) && (numofcustomers >= 0)) {
+    if ((num_of_customers != current_numofcustomers) && (num_of_customers >= 0)) {
         CleanupGraphics();
-        current_numofcustomers = numofcustomers;
+        current_numofcustomers = num_of_customers;
 
         if (current_numofcustomers)
             customer_graphic = win_malloc(sizeof(RECT)*current_numofcustomers);
     }
 
+    RECT next_to_draw;
     curr_barber_pen_style = TOTAL_BARBER_PEN_STYLES - 1;
-    switch (stateofbarber) {
+    switch (barber_state) {
         case SLEEPING:
-            barber_graphic = GetOnEmptyCustomerChairRect();//GetOnBarberChairRect();
+            next_to_draw = GetOnBarberChairRect();
             break;
         case CUTTING_HAIR:
             curr_barber_pen_style = (curr_barber_pen_style < TOTAL_BARBER_PEN_STYLES - 1) ? (curr_barber_pen_style + 1) : 0;
-            barber_graphic = GetNextToBarberChairRect();
+            next_to_draw = GetNextToBarberChairRect();
             break;
         case CHECKING_WAITING_ROOM:
-            barber_graphic = GetNextToWaitingRoomRect();
+            next_to_draw = GetNextToWaitingRoomRect();
             break;
         default:
-            barber_graphic = GetInvalidPositionRect();
+            next_to_draw = GetInvalidPositionRect();
             break;
+    }
+    if (EqualRect(&barber_graphic, &next_to_draw) == FALSE) {
+        barber_graphic = next_to_draw;
     }
 
     //@TODO: fix empty chair count
     int next_queue_pos = 0;
     for (int i = 0; i < current_numofcustomers; i++) {
-        switch (statesofcustomers[i]) {
+        switch (customer_states[i]) {
             case WAITTING_IN_QUEUE:
                 customer_graphic[i] = GetCustomerQueuePositionRect(next_queue_pos);
                 next_queue_pos++;
