@@ -27,4 +27,6 @@ barber_data *InitBarber(int InitialState);
 LONG GetBarberState(barber_data *barber);
 void SetBarberState(barber_data *barber, LONG new_state);
 BOOL DeleteBarber(barber_data *to_delete);
+void SetBarbershopDoorState(BOOL new_state);
+BOOL GetBarbershopDoorState(void);
 #endif //__BARBER_H

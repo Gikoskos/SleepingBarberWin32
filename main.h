@@ -34,9 +34,10 @@ enum {
 };
 
 extern HANDLE ReadyCustomersSem,
-              BarberIsReadyMtx,
-              KillAllThreadsEvt,
-              AccessCustomerFIFOMtx;
+              BarberIsReadySem,
+              BarberIsDoneSem,
+              AccessCustomerFIFOMtx,
+              KillAllThreadsEvt;
 
 extern FIFOqueue *customer_queue;
 

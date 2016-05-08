@@ -45,22 +45,21 @@ customer_data *NewCustomer(int InitialState)
 }
 
 #define BLOCK_UNTIL_TIMEOUT_OR_BREAK() \
-BREAK_IF_FALSE(WaitForSingleObject(KillAllThreadsEvt, TIMEOUT) == WAIT_OBJECT_0);
+BREAK_IF_TRUE(WaitForSingleObject(KillAllThreadsEvt, TIMEOUT) == WAIT_OBJECT_0);
 
 static UINT CALLBACK CustomerThread(LPVOID args)
 {
-    if (!ReadyCustomersSem || !BarberIsReadyMtx || !KillAllThreadsEvt) {
+    if (!ReadyCustomersSem || !BarberIsReadySem || !KillAllThreadsEvt || !BarberIsDoneSem) {
         return 1;
     }
 
     customer_data *customer = (customer_data*)args;
     BOOL done = FALSE;
-    HANDLE BarberIsReadyOrDieObj[2] = {KillAllThreadsEvt, BarberIsReadyMtx};
+    HANDLE BarberIsReadyOrDieObj[2] = {KillAllThreadsEvt, BarberIsReadySem};
     HANDLE AccessFIFOOrDieObj[2] = {KillAllThreadsEvt, AccessCustomerFIFOMtx};
-
+    HANDLE BarberIsDoneOrDieObj[2] = {KillAllThreadsEvt, BarberIsDoneSem};
 
     while (!done && (WaitForSingleObject(KillAllThreadsEvt, 0L) == WAIT_TIMEOUT)) {
-
         SetCustomerState(customer, WAITTING_IN_QUEUE);
 #ifndef _DEBUG
         while(!GetBarbershopDoorState()) Sleep(10);
@@ -71,31 +70,35 @@ static UINT CALLBACK CustomerThread(LPVOID args)
         if (GetFreeCustomerSeats() > 0) {
             SetCustomerState(customer, SITTING_IN_WAITING_ROOM);
 
+            printf("GetFreeCustomerSeats = %ld\n", GetFreeCustomerSeats());
             DecFreeCustomerSeats();
 
             for (;;) {
-                if (WaitForMultipleObjects(2, AccessFIFOOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0 + 1) {
+                DWORD dwResult = WaitForMultipleObjects(2, AccessFIFOOrDieObj, FALSE, INFINITE);
+                if (dwResult == WAIT_OBJECT_0 + 1) {
                     if (((customer_data*)customer_queue->head->data)->queue_num == customer->queue_num) {
+                        printf("HELLO FROM %ld!!!\n", customer->queue_num);
                         break;
                     }
+                    ReleaseMutex(AccessCustomerFIFOMtx);
                 } else {
                     return 1;
                 }
-                ReleaseMutex(AccessCustomerFIFOMtx);
             }
 
-            ReleaseSemaphore(ReadyCustomersSem, 1, NULL);
-            BREAK_IF_FALSE(WaitForMultipleObjects(2, BarberIsReadyOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
-            SetCustomerState(customer, GETTING_HAIRCUT);
-            BLOCK_UNTIL_TIMEOUT_OR_BREAK();
-            printf("Customer %ld is done!\n", customer->queue_num);
-            SetCustomerState(customer, CUSTOMER_DONE);
-            BLOCK_UNTIL_TIMEOUT_OR_BREAK();
             FIFOdequeue(customer_queue);
             ReleaseMutex(AccessCustomerFIFOMtx);
+
+            ReleaseSemaphore(ReadyCustomersSem, 1, NULL);
+            BREAK_IF_TRUE(WaitForMultipleObjects(2, BarberIsReadyOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
+            SetCustomerState(customer, GETTING_HAIRCUT);
+
+            BREAK_IF_TRUE(WaitForMultipleObjects(2, BarberIsDoneOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
             customer->haircut_success = done = TRUE;
+            printf("Customer %ld is done!\n", customer->queue_num);
         }
     }
+    SetCustomerState(customer, CUSTOMER_DONE);
     DecNumOfCustomers();
     printf("total_customers = %ld\n", total_customers);
 

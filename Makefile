@@ -1,7 +1,7 @@
 CC              = gcc
 CFLAGS          = -std=c11
 DBGFLAGS        = -Wall -g -ggdb -D_DEBUG
-RLSFLAGS        =  
+RLSFLAGS        = -mwindows
 SRC             = main.c customer.c barber.c res.o
 MORE_WARNINGS   = -Wextra -pedantic
 LINKER          = -lcomctl32 -lgdi32 -luxtheme -lgdiplus FIFOqueue.dll.a
@@ -19,7 +19,7 @@ release: $(SRC) draw.c
 	$(CC) $(CFLAGS) $(RLSFLAGS) -o build/SleepingBarberWin.exe $^ $(LINKER)
 
 draw_dll: draw.c
-	$(CC) $(CFLAGS) -shared -o build/draw.dll $^ -lgdi32 -Wl,-no-undefined,--enable-runtime-pseudo-reloc
+	$(CC) $(CFLAGS) $(DBGFLAGS) -shared -o build/draw.dll $^ -lgdi32 -Wl,-no-undefined,--enable-runtime-pseudo-reloc
 
 res:
 	windres res.rc res.o

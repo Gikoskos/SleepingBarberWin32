@@ -14,19 +14,18 @@ typedef struct _dll_func_address {
     HMODULE to_load;
     void (*DrawBufferToWindow)(HWND, backbuffer_data*);
     void (*DrawToBuffer)(backbuffer_data*);
-    void (*UpdateState)(LONG, int*, int, BOOL*, BOOL);
+    void (*UpdateState)(LONG, int*, int, BOOL*, BOOL, BOOL, BOOL);
     void (*CleanupGraphics)(void);
     void (*ScaleGraphics)(int);
-    void (*SetBarbershopDoorState)(BOOL);
 } dll_func_address;
 
 static dll_func_address drawdll_func = {NULL, NULL, NULL, NULL, NULL};
-static BOOL door_open = FALSE;
 #endif
 
 
 HANDLE ReadyCustomersSem = NULL;
-HANDLE BarberIsReadyMtx = NULL;
+HANDLE BarberIsReadySem = NULL;
+HANDLE BarberIsDoneSem = NULL;
 HANDLE AccessCustomerFIFOMtx = NULL;
 HANDLE KillAllThreadsEvt = NULL;
 
@@ -46,6 +45,7 @@ POINT resolutions[TOTAL_RESOLUTIONS] = {
 //is TRUE when the game is running and false when it's not
 static BOOL running = FALSE;
 static HINSTANCE g_hInst;
+static BOOL animations_enabled = FALSE;
 
 
 /* Prototypes for functions with local scope */
@@ -229,6 +229,7 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
 {
 #define IDM_EXIT       2000
 #define IDM_ABOUT      2001
+#define IDM_ANIMATIONS 2002
 #define IDM_SMALL_RES  3000
 #define IDM_MEDIUM_RES 3001
 #define IDM_LARGE_RES  3002
@@ -248,12 +249,10 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
                     break;
                 case VK_SPACE:
                 case 0x4F: //'O' key
+                    SetBarbershopDoorState(!GetBarbershopDoorState());
 #ifdef _DEBUG
-                    door_open = !door_open;
-                    drawdll_func.SetBarbershopDoorState(door_open);
                     drawdll_func.ScaleGraphics(curr_resolution);
 #else
-                    SetBarbershopDoorState(!GetBarbershopDoorState());
                     ScaleGraphics(curr_resolution);
 #endif
                     break;
@@ -284,6 +283,14 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
         case WM_COMMAND:
         {
             switch (LOWORD(wParam)) {
+                case IDM_ANIMATIONS:
+#ifdef _DEBUG
+                    MessageBox(hwnd, TEXT("Animations don't work in debugging mode."),
+                               TEXT("Error"), MB_OK | MB_ICONERROR);
+#else
+                    animations_enabled = !animations_enabled;
+#endif
+                    break;
                 case IDM_ABOUT:
                     MessageBox(hwnd, TEXT("            ")
                                TEXT("SleepingBarber Win32\n")
@@ -311,7 +318,7 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
         {
             ResolutionMenu = CreatePopupMenu();
 
-            AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED, 0, TEXT("Resolution"));
+            AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED, 0, TEXT("Window size"));
             AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
             AppendMenu(ResolutionMenu,
                        MF_STRING | ((curr_resolution == SMALL_WND) ? MF_CHECKED : MF_UNCHECKED),
@@ -322,6 +329,12 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
             AppendMenu(ResolutionMenu,
                        MF_STRING | ((curr_resolution == LARGE_WND) ? MF_CHECKED : MF_UNCHECKED),
                        IDM_LARGE_RES, TEXT("High (1000x750)"));
+
+            AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED | MF_MENUBREAK, 0, TEXT("Settings"));
+            AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
+            AppendMenu(ResolutionMenu,
+                       MF_STRING | ((animations_enabled) ? MF_CHECKED : MF_UNCHECKED),
+                       IDM_ANIMATIONS, TEXT("Animations"));
 
             AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED | MF_MENUBREAK, 0, TEXT("Help"));
             AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
@@ -368,12 +381,10 @@ static BOOL LoadDrawDLL(void)
     if ((drawdll_func.to_load = LoadLibrary(drawdll_loaded_fname)) != NULL) {
         drawdll_func.DrawBufferToWindow = (void(*)(HWND, backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawBufferToWindow");
         drawdll_func.DrawToBuffer = (void(*)(backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawToBuffer");
-        drawdll_func.UpdateState = (void(*)(LONG, int*, int, BOOL*, BOOL))GetProcAddress(drawdll_func.to_load, "UpdateState");
+        drawdll_func.UpdateState = (void(*)(LONG, int*, int, BOOL*, BOOL, BOOL, BOOL))GetProcAddress(drawdll_func.to_load, "UpdateState");
         drawdll_func.ScaleGraphics = (void(*)(int))GetProcAddress(drawdll_func.to_load, "ScaleGraphics");
-        drawdll_func.SetBarbershopDoorState = (void(*)(BOOL))GetProcAddress(drawdll_func.to_load, "SetBarbershopDoorState");
         drawdll_func.CleanupGraphics = (void(*)(void))GetProcAddress(drawdll_func.to_load, "CleanupGraphics");
 
-        if (drawdll_func.SetBarbershopDoorState) drawdll_func.SetBarbershopDoorState(door_open);
         if (drawdll_func.ScaleGraphics) drawdll_func.ScaleGraphics(curr_resolution);
         return TRUE;
     } else {
@@ -401,7 +412,8 @@ static FILETIME GetDrawDLLLastWriteTime()
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     const TCHAR *ReadyCustomersSemaphoreName = _T("ReadyCustomersSem"),
-                *BarberIsReadyMutexName = _T("BarberIsReadyMtx"),
+                *BarberIsReadySemaphoreName = _T("BarberIsReadySem"),
+                *BarberIsDoneSemaphoreName = _T("BarberIsDoneSem"),
                 *AccessCustomerFIFOMutexName = _T("AccessCustomerFIFOMtx");
     const int initial_customers = 6;
     LONG prev_total_customers;
@@ -426,15 +438,16 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 #endif
 
     ReadyCustomersSem = CreateSemaphore(NULL, 0, CUSTOMER_CHAIRS, ReadyCustomersSemaphoreName);
-    BarberIsReadyMtx = CreateMutex(NULL, FALSE, BarberIsReadyMutexName);
+    BarberIsReadySem = CreateSemaphore(NULL, 0, 1, BarberIsReadySemaphoreName);
+    BarberIsDoneSem = CreateSemaphore(NULL, 0, 1, BarberIsDoneSemaphoreName);
     AccessCustomerFIFOMtx = CreateMutex(NULL, FALSE, AccessCustomerFIFOMutexName);
     KillAllThreadsEvt = CreateEvent(NULL, TRUE, FALSE, NULL);
 
     customer_queue = newFIFOqueue();
 
     barber_data *barber = InitBarber(0);
-    if (!barber || !ReadyCustomersSem || !BarberIsReadyMtx || !AccessCustomerFIFOMtx ||
-        !customer_queue) {
+    if (!barber || !ReadyCustomersSem || !BarberIsReadySem || !AccessCustomerFIFOMtx ||
+        !customer_queue || !BarberIsDoneSem) {
         PRINT_ERR_DEBUG();
         return 1;
     }
@@ -481,7 +494,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     running = TRUE;
     backbuff = NewBackbuffer(SBarberMainWindow.hwnd);
 
-    while (running && backbuff) {
+    while (running) {
         if (curr_resolution != prev_resolution) {
             if (!DeleteBackbuffer(backbuff)) {
                 fprintf(stderr, "Error deleting backbuff!\n");
@@ -529,7 +542,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
             if (tmp != prev_total_customers) {
                 if (tmp - prev_total_customers < 0) {//if there are less customers than before
                     for (; customer_array_idx <= prev_total_customers - tmp - 1; customer_array_idx++) {
-                        printf("deleted customer %ld\n", customer_array[customer_array_idx]->queue_num);
+                        //printf("deleted customer %ld\n", customer_array[customer_array_idx]->queue_num);
                         DeleteCustomer(*(customer_array + customer_array_idx)); //we free the customers who finished
                     }
                     prev_total_customers = tmp; //the prev customers counter gets updated 
@@ -567,9 +580,12 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
             }
 #ifdef _DEBUG
             if (drawdll_func.UpdateState) drawdll_func.UpdateState(prev_total_customers, customer_states, 
-                                                                   barber_state, animate_customer, animate_barber);
+                                                                   barber_state, animate_customer,
+                                                                   animate_barber, animations_enabled,
+                                                                   GetBarbershopDoorState());
 #else
-            UpdateState(prev_total_customers, customer_states, barber_state, animate_customer, animate_barber);
+            UpdateState(prev_total_customers, customer_states, barber_state, animate_customer,
+                        animate_barber, animations_enabled, GetBarbershopDoorState());
 #endif
             next_game_tick += SKIP_TICKS;
             loops++;
@@ -580,9 +596,10 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
                 /* Cleanup goes here */
     for (int i = customer_array_idx; i <= prev_total_customers; i++) {
-        //printf("waiting for thread %ld to finish\n", customer_array[i]->queue_num);
-        WaitForSingleObject(*(customer_array + i), INFINITE);
-        DeleteCustomer(*(customer_array + i));
+        if (*(customer_array + i)) {
+            WaitForSingleObject((*(customer_array + i))->hthrd, INFINITE);
+            DeleteCustomer(*(customer_array + i));
+        }
     }
     win_free(customer_array);
     win_free(customer_states);

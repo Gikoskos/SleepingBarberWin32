@@ -14,6 +14,7 @@
 
 
 static BOOL BarberIsInitialized = FALSE;
+static LONG barbershop_door_open = FALSE;
 
 /* Prototypes for functions with local scope */
 static UINT CALLBACK BarberThread(void *args);
@@ -40,11 +41,11 @@ barber_data *InitBarber(int InitialState)
 }
 
 #define BLOCK_UNTIL_TIMEOUT_OR_BREAK() \
-BREAK_IF_FALSE(WaitForSingleObject(KillAllThreadsEvt, TIMEOUT) == WAIT_OBJECT_0);
+BREAK_IF_TRUE(WaitForSingleObject(KillAllThreadsEvt, TIMEOUT) == WAIT_OBJECT_0);
 
 static UINT CALLBACK BarberThread(LPVOID args)
 {
-    if (!ReadyCustomersSem || !BarberIsReadyMtx || !KillAllThreadsEvt) {
+    if (!ReadyCustomersSem || !BarberIsReadySem || !KillAllThreadsEvt || !BarberIsDoneSem) {
         return 1;
     }
 
@@ -54,19 +55,18 @@ static UINT CALLBACK BarberThread(LPVOID args)
 
 
     while (/*!done && */(WaitForSingleObject(KillAllThreadsEvt, 0L) == WAIT_TIMEOUT)) {
-
         SetBarberState(barber, SLEEPING);
-        BREAK_IF_FALSE(WaitForMultipleObjects(2, ReadyCustomersOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
-
-        //printf("Barber is ready!");
+        BREAK_IF_TRUE(WaitForMultipleObjects(2, ReadyCustomersOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
         IncFreeCustomerSeats();
         SetBarberState(barber, CHECKING_WAITING_ROOM);
 
         BLOCK_UNTIL_TIMEOUT_OR_BREAK();
-
-        ReleaseMutex(BarberIsReadyMtx);
+        ReleaseSemaphore(BarberIsReadySem, 1, NULL);
+        printf("Barber is ready!\n");
         SetBarberState(barber, CUTTING_HAIR);
         BLOCK_UNTIL_TIMEOUT_OR_BREAK();
+        ReleaseSemaphore(BarberIsDoneSem, 1, NULL);
+        printf("Barber is done!\n");
     }
 
     return 0;
@@ -99,4 +99,17 @@ BOOL DeleteBarber(barber_data *to_delete)
         to_delete = NULL;
     }
     return retvalue;
+}
+
+void SetBarbershopDoorState(BOOL new_state)
+{
+    InterlockedExchange(&barbershop_door_open, (LONG)new_state);
+}
+
+BOOL GetBarbershopDoorState(void)
+{
+    LONG retvalue, tmp = (LONG)barbershop_door_open;
+
+    InterlockedExchange(&retvalue, tmp);
+    return (BOOL)retvalue;
 }

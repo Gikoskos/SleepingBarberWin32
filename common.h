@@ -63,7 +63,7 @@
 #define IDI_SMALLBARBERWIN_ICON 211
 
 //helper macro used in loops inside the barber and customer thread functions
-#define BREAK_IF_FALSE(x) \
+#define BREAK_IF_TRUE(x) \
 if (x) {\
     break;\
 }

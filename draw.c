@@ -6,6 +6,7 @@
 #include "draw.h"
 #include "barber.h"
 #include "customer.h"
+#include "main.h"
 
 #define WALL_VERTICES         12
 #define DOOR_VERTICES          4
@@ -16,6 +17,8 @@
 
 //animated graphics
 static RECT barber_graphic, *customer_graphic = NULL;
+static int animation_delta = 10;
+
 
 //unchanged graphics
 static const POINT lowres_wall_vertices[WALL_VERTICES] = { //barbershop wall
@@ -54,13 +57,15 @@ static const POINT lowres_wall_vertices[WALL_VERTICES] = { //barbershop wall
 }, lowres_character_dimension = {40, 40}; //width and height of the barber and customers' graphics
 
 
-static POINT scaled_wall[WALL_VERTICES], scaled_door[DOOR_VERTICES],
+static POINT scaled_wall[WALL_VERTICES],
+             scaled_opened_door[DOOR_VERTICES],
+             scaled_closed_door[DOOR_VERTICES],
              scaled_barberchair[BARBERCHAIR_VERTICES],
              scaled_customerchair[CUSTOMER_CHAIRS][CHAIR_VERTICES],
              scaled_character_dimension;
 
 //are automatically 0'd out so no need to FALSE all the fields
-static BOOL barbershop_door_open, chair_occupied[CUSTOMER_CHAIRS];
+static BOOL barbershop_door_state = FALSE, chair_occupied[CUSTOMER_CHAIRS];
 
 static int scaled_pen_thickness, scaled_font_size;
 
@@ -107,22 +112,11 @@ static void GetRotatedDoorPoints(double angle)
 }
 #endif
 
-void SetBarbershopDoorState(BOOL new_state)
-{
-    barbershop_door_open = new_state;
-}
-
-BOOL GetBarbershopDoorState(void)
-{
-    LONG retvalue, tmp = (LONG)barbershop_door_open;
-
-    InterlockedExchange(&retvalue, tmp);
-    return (BOOL)retvalue;
-}
-
 void ScaleGraphics(int scaling_exp)
 {
     const double scaling_base = 1.25;
+
+    animation_delta = (int)(10 * (pow(scaling_base, (double)scaling_exp)));
 
     scaled_pen_thickness = scaling_exp + 1;
     scaled_font_size = (int)(14 * (pow(scaling_base, (double)scaling_exp)));
@@ -134,7 +128,8 @@ void ScaleGraphics(int scaling_exp)
             scaled_wall[i] = lowres_wall_vertices[i];
 
             if (i < DOOR_VERTICES) {
-                scaled_door[i] = (GetBarbershopDoorState()) ? lowres_opened_door_vertices[i] : lowres_closed_door_vertices[i];
+                scaled_opened_door[i] = lowres_opened_door_vertices[i];
+                scaled_closed_door[i] = lowres_closed_door_vertices[i];
             }
 
             if (i < BARBERCHAIR_VERTICES) {
@@ -153,13 +148,17 @@ void ScaleGraphics(int scaling_exp)
             scaled_wall[i].y = (LONG)tmp;
 
             if (i < DOOR_VERTICES) {
-                tmp = (double)(((GetBarbershopDoorState()) ? lowres_opened_door_vertices[i].x : lowres_closed_door_vertices[i].x)
-                               * (pow(scaling_base, (double)scaling_exp)));
-                scaled_door[i].x = (LONG)tmp;
+                tmp = (double)(lowres_opened_door_vertices[i].x * (pow(scaling_base, (double)scaling_exp)));
+                scaled_opened_door[i].x = (LONG)tmp;
 
-                tmp = (double)(((GetBarbershopDoorState()) ? lowres_opened_door_vertices[i].y : lowres_closed_door_vertices[i].y)
-                               * (pow(scaling_base, (double)scaling_exp)));
-                scaled_door[i].y = (LONG)tmp;
+                tmp = (double)(lowres_opened_door_vertices[i].y * (pow(scaling_base, (double)scaling_exp)));
+                scaled_opened_door[i].y = (LONG)tmp;
+
+                tmp = (double)(lowres_closed_door_vertices[i].x * (pow(scaling_base, (double)scaling_exp)));
+                scaled_closed_door[i].x = (LONG)tmp;
+
+                tmp = (double)(lowres_closed_door_vertices[i].y * (pow(scaling_base, (double)scaling_exp)));
+                scaled_closed_door[i].y = (LONG)tmp;
             }
 
             if (i < BARBERCHAIR_VERTICES) {
@@ -214,10 +213,9 @@ void DrawToBuffer(backbuffer_data *buf)
 
         SetTextColor(buf->hdc, RGB_WHITE);
         SetBkColor(buf->hdc, GetPixel(buf->hdc, 0, 0));
-        if (GetBarbershopDoorState())
-            TextOut(buf->hdc, 10, 10, text1, ARRAYSIZE(text1));
-        else
-            TextOut(buf->hdc, 10, 10, text2, ARRAYSIZE(text2));
+
+        TextOut(buf->hdc, 10, 10, (barbershop_door_state) ? text1 : text2,
+                (barbershop_door_state) ? ARRAYSIZE(text1) : ARRAYSIZE(text2));
 
         SelectFont(buf->hdc, prev_font);
         DeleteFont(apx_font);
@@ -244,7 +242,7 @@ void DrawToBuffer(backbuffer_data *buf)
         HBRUSH doorfilling_brush = CreateSolidBrush(RGB_GREEN);
         prev_brush = SelectObject(buf->hdc, doorfilling_brush);
 
-        Polygon(buf->hdc, scaled_door, DOOR_VERTICES);
+        Polygon(buf->hdc, (barbershop_door_state) ? scaled_opened_door : scaled_closed_door, DOOR_VERTICES);
 
         SelectObject(buf->hdc, prev_brush);
         prev_pen = SelectObject(buf->hdc, prev_pen);
@@ -341,8 +339,14 @@ static int GetNumOfEmptyChairs(void)
 
 static int GetNextEmptyChairIndex(void)
 {
-    for (int i = 0; i < CUSTOMER_CHAIRS; i++)
-        if (chair_occupied[i] == FALSE) return i;
+    for (int i = 0; i < CUSTOMER_CHAIRS; i++) {
+        if (chair_occupied[i] == FALSE) {
+            chair_occupied[i] = TRUE;
+            return i;
+        }
+    }
+
+    return -1;
 }
 
 static RECT GetOnBarberChairRect(void)
@@ -369,11 +373,15 @@ static RECT GetNextToBarberChairRect(void)
 
 static RECT GetOnEmptyCustomerChairRect(void)
 {
-    RECT retvalue = {0, 0, 0, 0};
+    RECT retvalue;
+
+    SetRectEmpty(&retvalue);
 
     if (!GetNumOfEmptyChairs()) return retvalue;
 
     int empty_chair = GetNextEmptyChairIndex();
+
+    if (empty_chair < 0) return GetInvalidPositionRect();
 
     chair_occupied[empty_chair] = TRUE;
     //adding a scaled value here to push the character into the chair for all resolutions
@@ -420,16 +428,28 @@ static RECT GetInvalidPositionRect(void)
 }
 
 void UpdateState(LONG num_of_customers, int *customer_states, int barber_state,
-                 BOOL *animate_customer, BOOL animate_barber)
+                 BOOL *animate_customer, BOOL animate_barber, BOOL enable_animations,
+                 BOOL barbershop_door_is_open)
 {
+    //these values are used in animating the characters
+    static BOOL start_animating_customer[8]; //using an automatic array for now
+    static BOOL start_animating_barber;
+
+    barbershop_door_state = barbershop_door_is_open;
+
     for (int i = 0; i < CUSTOMER_CHAIRS; i++) chair_occupied[i] = FALSE;
 
     if ((num_of_customers != current_numofcustomers) && (num_of_customers >= 0)) {
-        CleanupGraphics();
+        //CleanupGraphics();
         current_numofcustomers = num_of_customers;
 
-        if (current_numofcustomers)
-            customer_graphic = win_malloc(sizeof(RECT)*current_numofcustomers);
+        if (current_numofcustomers) {
+            if (!customer_graphic) {
+                customer_graphic = win_malloc(sizeof(RECT)*current_numofcustomers);
+            } else {
+                customer_graphic = win_realloc(customer_graphic, sizeof(RECT)*current_numofcustomers);
+            }
+        }
     }
 
     RECT next_to_draw;
@@ -449,33 +469,120 @@ void UpdateState(LONG num_of_customers, int *customer_states, int barber_state,
             next_to_draw = GetInvalidPositionRect();
             break;
     }
+    //if the position of the barber changed
     if (EqualRect(&barber_graphic, &next_to_draw) == FALSE) {
-        barber_graphic = next_to_draw;
+        //we check to see if animations are enabled before we can move him
+        if (enable_animations) {
+            start_animating_barber = TRUE;
+        } else {
+            CopyRect(&barber_graphic, &next_to_draw);
+        }
     }
 
-    //@TODO: fix empty chair count
+    if (start_animating_barber && enable_animations) {
+        int connected_points = 0;
+
+        if (barber_graphic.left < next_to_draw.left - animation_delta)
+            barber_graphic.left += animation_delta;
+        else if (barber_graphic.left > next_to_draw.left + animation_delta)
+            barber_graphic.left -= animation_delta;
+        else
+            connected_points++;
+
+        if (barber_graphic.top < next_to_draw.top - animation_delta)
+            barber_graphic.top += animation_delta;
+        else if (barber_graphic.top > next_to_draw.top + animation_delta)
+            barber_graphic.top -= animation_delta;
+        else
+            connected_points++;
+
+        if (barber_graphic.right < next_to_draw.right - animation_delta)
+            barber_graphic.right += animation_delta;
+        else if (barber_graphic.right > next_to_draw.right + animation_delta)
+            barber_graphic.right -= animation_delta;
+        else
+            connected_points++;
+
+        if (barber_graphic.bottom < next_to_draw.bottom - animation_delta)
+            barber_graphic.bottom += animation_delta;
+        else if (barber_graphic.bottom > next_to_draw.bottom + animation_delta)
+            barber_graphic.bottom -= animation_delta;
+        else
+            connected_points++;
+
+        if (connected_points == 4) {
+            CopyRect(&barber_graphic, &next_to_draw);
+            start_animating_barber = FALSE;
+        }
+    }
+
+    //TODO: fix empty chair count
     int next_queue_pos = 0;
     for (int i = 0; i < current_numofcustomers; i++) {
         switch (customer_states[i]) {
             case WAITTING_IN_QUEUE:
-                customer_graphic[i] = GetCustomerQueuePositionRect(next_queue_pos);
-                next_queue_pos++;
+                next_to_draw = GetCustomerQueuePositionRect(next_queue_pos++);
                 break;
             case WAKING_UP_BARBER:
-                customer_graphic[i] = GetNextToBarberChairRect();
+                next_to_draw = GetNextToBarberChairRect();
                 break;
             case SITTING_IN_WAITING_ROOM:
-                customer_graphic[i] = GetOnEmptyCustomerChairRect();
-                if (!customer_graphic[i].left)
-                    customer_graphic[i] = GetInvalidPositionRect();
+                next_to_draw = GetOnEmptyCustomerChairRect();
+                if (!next_to_draw.left) //failsafe
+                    next_to_draw = GetInvalidPositionRect(); //unreachable
                 break;
             case GETTING_HAIRCUT:
-                customer_graphic[i] = GetOnBarberChairRect();
+                next_to_draw = GetOnBarberChairRect();
                 break;
             case CUSTOMER_DONE:
             default:
-                customer_graphic[i] = GetInvalidPositionRect();
+                next_to_draw = GetInvalidPositionRect();
                 break;
+        }
+
+        if (EqualRect(&customer_graphic[i], &next_to_draw) == FALSE) {
+            if (enable_animations) {
+                start_animating_customer[i] = TRUE;
+            } else {
+                CopyRect(&customer_graphic[i], &next_to_draw);
+            }
+        }
+
+        if (start_animating_customer[i] && enable_animations) {
+            int connected_points = 0;
+
+            if (customer_graphic[i].left < next_to_draw.left - animation_delta)
+                customer_graphic[i].left += animation_delta;
+            else if (customer_graphic[i].left > next_to_draw.left + animation_delta)
+                customer_graphic[i].left -= animation_delta;
+            else
+                connected_points++;
+
+            if (customer_graphic[i].top < next_to_draw.top - animation_delta)
+                customer_graphic[i].top += animation_delta;
+            else if (customer_graphic[i].top > next_to_draw.top + animation_delta)
+                customer_graphic[i].top -= animation_delta;
+            else
+                connected_points++;
+
+            if (customer_graphic[i].right < next_to_draw.right - animation_delta)
+                customer_graphic[i].right += animation_delta;
+            else if (customer_graphic[i].right > next_to_draw.right + animation_delta)
+                customer_graphic[i].right -= animation_delta;
+            else
+                connected_points++;
+
+            if (customer_graphic[i].bottom < next_to_draw.bottom - animation_delta)
+                customer_graphic[i].bottom += animation_delta;
+            else if (customer_graphic[i].bottom > next_to_draw.bottom + animation_delta)
+                customer_graphic[i].bottom -= animation_delta;
+            else
+                connected_points++;
+
+            if (connected_points == 4) {
+                CopyRect(&customer_graphic[i], &next_to_draw);
+                start_animating_customer[i] = FALSE;
+            }
         }
     }
 }
