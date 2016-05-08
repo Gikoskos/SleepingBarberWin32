@@ -44,8 +44,8 @@ customer_data *NewCustomer(int InitialState)
     return new;
 }
 
-#define BLOCK_UNTIL_TIMEOUT_OR_BREAK() \
-BREAK_IF_TRUE(WaitForSingleObject(KillAllThreadsEvt, TIMEOUT) == WAIT_OBJECT_0);
+#define BLOCK_UNTIL_TIMEOUT_OR_BREAK(x) \
+BREAK_IF_TRUE(WaitForSingleObject(KillAllThreadsEvt, x) == WAIT_OBJECT_0);
 
 static UINT CALLBACK CustomerThread(LPVOID args)
 {
@@ -62,15 +62,14 @@ static UINT CALLBACK CustomerThread(LPVOID args)
     while (!done && (WaitForSingleObject(KillAllThreadsEvt, 0L) == WAIT_TIMEOUT)) {
         SetCustomerState(customer, WAITTING_IN_QUEUE);
 #ifndef _DEBUG
-        while(!GetBarbershopDoorState()) Sleep(10);
+        while(!GetBarbershopDoorState()) BLOCK_UNTIL_TIMEOUT_OR_BREAK(50);
 #else
-        BLOCK_UNTIL_TIMEOUT_OR_BREAK();
+        BLOCK_UNTIL_TIMEOUT_OR_BREAK(TIMEOUT);
 #endif
 
         if (GetFreeCustomerSeats() > 0) {
             SetCustomerState(customer, SITTING_IN_WAITING_ROOM);
 
-            printf("GetFreeCustomerSeats = %ld\n", GetFreeCustomerSeats());
             DecFreeCustomerSeats();
 
             for (;;) {
