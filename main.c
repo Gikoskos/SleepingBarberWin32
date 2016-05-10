@@ -14,7 +14,7 @@ typedef struct _dll_func_address {
     HMODULE to_load;
     void (*DrawBufferToWindow)(HWND, backbuffer_data*);
     void (*DrawToBuffer)(backbuffer_data*);
-    void (*UpdateState)(LONG, int*, int, BOOL*, BOOL, BOOL, BOOL);
+    void (*UpdateState)(LONG, int*, int, BOOL, BOOL);
     void (*CleanupGraphics)(void);
     void (*ScaleGraphics)(int);
 } dll_func_address;
@@ -45,7 +45,8 @@ POINT resolutions[TOTAL_RESOLUTIONS] = {
 //is TRUE when the game is running and false when it's not
 static BOOL running = FALSE;
 static HINSTANCE g_hInst;
-static BOOL animations_enabled = FALSE;
+static BOOL character_animations = TRUE;
+static BOOL window_animation = FALSE;
 
 
 /* Prototypes for functions with local scope */
@@ -153,42 +154,42 @@ static BOOL ResizeWindow(HWND hwnd, int new_size, int old_size)
 {
     if ((new_size == old_size) || !hwnd) return FALSE;
 
-    int i, j, width, height;
-    POINT up_to;
+    if (window_animation == TRUE) {
+        POINT up_to;
+        int i, j, width, height;
 
-    width = resolutions[old_size].x;
-    height = resolutions[old_size].y;
-    up_to.x = labs(resolutions[new_size].x - resolutions[old_size].x);
-    up_to.y = labs(resolutions[new_size].y - resolutions[old_size].y);
+        width = resolutions[old_size].x;
+        height = resolutions[old_size].y;
+        up_to.x = labs(resolutions[new_size].x - resolutions[old_size].x);
+        up_to.y = labs(resolutions[new_size].y - resolutions[old_size].y);
 
-#ifdef _DEBUG //disable the window resizing animation in debugging versions
-    HDWP winnum = BeginDeferWindowPos(1);
-    //no idea why 'i' needs to be less or equal than 'up_to.x' and 
-    //'j' just less than 'up_to.y', but the resolutions work correctly like this
-    for (i = 1, j = 1; (i <= up_to.x) || (j < up_to.y);) {
-#else
-    for (i = 1, j = 1; (i <= up_to.x) || (j < up_to.y);) {
-        HDWP winnum = BeginDeferWindowPos(1);
-#endif
-        if (!winnum) continue;
+        //no idea why 'i' needs to be less or equal than 'up_to.x' and 
+        //'j' just less than 'up_to.y', but the resolutions work correctly like this
+        for (i = 1, j = 1; (i <= up_to.x) || (j < up_to.y);) {
+            HDWP winnum = BeginDeferWindowPos(1);
 
-        if (old_size < new_size) {
-            DeferWindowPos(winnum, hwnd, HWND_TOP, 0, 0, width + i, height + j,
-                           SWP_NOMOVE | SWP_NOOWNERZORDER | SWP_NOZORDER);
-        } else {
-            DeferWindowPos(winnum, hwnd, HWND_TOP, 0, 0, width - i, height - j,
-                           SWP_NOMOVE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+            if (!winnum) continue;
+
+            if (old_size < new_size) {
+                DeferWindowPos(winnum, hwnd, HWND_TOP, 0, 0, width + i, height + j,
+                               SWP_NOMOVE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+            } else {
+                DeferWindowPos(winnum, hwnd, HWND_TOP, 0, 0, width - i, height - j,
+                               SWP_NOMOVE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+            }
+
+            i += (i <= up_to.x) ? 1 : 0;
+            j += (j < up_to.y) ? 1 : 0;
+
+            EndDeferWindowPos(winnum);
         }
-
-        i += (i <= up_to.x) ? 1 : 0;
-        j += (j < up_to.y) ? 1 : 0;
-#ifdef _DEBUG
-    }
-    EndDeferWindowPos(winnum);
-#else
+    } else {
+        HDWP winnum = BeginDeferWindowPos(1);
+        DeferWindowPos(winnum, hwnd, HWND_TOP, 0, 0,
+                       resolutions[new_size].x, resolutions[new_size].y,
+                       SWP_NOMOVE | SWP_NOOWNERZORDER | SWP_NOZORDER);
         EndDeferWindowPos(winnum);
     }
-#endif
 
     return TRUE;
 }
@@ -229,7 +230,9 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
 {
 #define IDM_EXIT       2000
 #define IDM_ABOUT      2001
-#define IDM_ANIMATIONS 2002
+#define IDM_CHR_ANIM   2002
+#define IDM_WND_ANIM   2003
+
 #define IDM_SMALL_RES  3000
 #define IDM_MEDIUM_RES 3001
 #define IDM_LARGE_RES  3002
@@ -283,21 +286,32 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
         case WM_COMMAND:
         {
             switch (LOWORD(wParam)) {
-                case IDM_ANIMATIONS:
-#ifdef _DEBUG
-                    MessageBox(hwnd, TEXT("Animations don't work in debugging mode."),
-                               TEXT("Error"), MB_OK | MB_ICONERROR);
-#else
-                    animations_enabled = !animations_enabled;
-#endif
+                case IDM_WND_ANIM:
+                    window_animation = !window_animation;
+                    break;
+                case IDM_CHR_ANIM:
+                    character_animations = !character_animations;
                     break;
                 case IDM_ABOUT:
-                    MessageBox(hwnd, TEXT("            ")
-                               TEXT("SleepingBarber Win32\n")
-                               TEXT("        ")
-                               TEXT("George Koskeridis (c) 2016 "),
-                               TEXT("About"), MB_OK);
+                {
+                    MSGBOXPARAMS aboutboxopts = {
+                        .cbSize = sizeof(MSGBOXPARAMS),
+                        .hwndOwner = hwnd,
+                        .hInstance = g_hInst,
+                        .lpszText = TEXT("            ")
+                                    TEXT("SleepingBarber Win32\n")
+                                    TEXT("        ")
+                                    TEXT("George Koskeridis (c) 2016 "),
+                        .lpszCaption = TEXT("About"),
+                        .dwStyle = MB_OK,
+                        .lpszIcon = NULL,
+                        .dwContextHelpId = NULL,
+                        .lpfnMsgBoxCallback = NULL,
+                        .dwLanguageId = LANG_ENGLISH
+                    };
+                    MessageBoxIndirect(&aboutboxopts);
                     break;
+                }
                 case IDM_EXIT:
                     SendMessage(hwnd, WM_CLOSE, (WPARAM)0, (LPARAM)0);
                     break;
@@ -318,7 +332,7 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
         {
             ResolutionMenu = CreatePopupMenu();
 
-            AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED, 0, TEXT("Window size"));
+            AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED, 0, TEXT("Window resolution"));
             AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
             AppendMenu(ResolutionMenu,
                        MF_STRING | ((curr_resolution == SMALL_WND) ? MF_CHECKED : MF_UNCHECKED),
@@ -330,11 +344,14 @@ static LRESULT CALLBACK MainWindowProcedure(HWND hwnd, UINT msg, WPARAM wParam, 
                        MF_STRING | ((curr_resolution == LARGE_WND) ? MF_CHECKED : MF_UNCHECKED),
                        IDM_LARGE_RES, TEXT("High (1000x750)"));
 
-            AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED | MF_MENUBREAK, 0, TEXT("Settings"));
+            AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED | MF_MENUBREAK, 0, TEXT("Animations"));
             AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
             AppendMenu(ResolutionMenu,
-                       MF_STRING | ((animations_enabled) ? MF_CHECKED : MF_UNCHECKED),
-                       IDM_ANIMATIONS, TEXT("Animations"));
+                       MF_STRING | ((character_animations) ? MF_CHECKED : MF_UNCHECKED),
+                       IDM_CHR_ANIM, TEXT("Characters"));
+            AppendMenu(ResolutionMenu,
+                       MF_STRING | ((window_animation) ? MF_CHECKED : MF_UNCHECKED),
+                       IDM_WND_ANIM, TEXT("Window resize"));
 
             AppendMenu(ResolutionMenu, MF_STRING | MF_GRAYED | MF_MENUBREAK, 0, TEXT("Help"));
             AppendMenu(ResolutionMenu, MF_SEPARATOR, 0, NULL);
@@ -381,7 +398,7 @@ static BOOL LoadDrawDLL(void)
     if ((drawdll_func.to_load = LoadLibrary(drawdll_loaded_fname)) != NULL) {
         drawdll_func.DrawBufferToWindow = (void(*)(HWND, backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawBufferToWindow");
         drawdll_func.DrawToBuffer = (void(*)(backbuffer_data*))GetProcAddress(drawdll_func.to_load, "DrawToBuffer");
-        drawdll_func.UpdateState = (void(*)(LONG, int*, int, BOOL*, BOOL, BOOL, BOOL))GetProcAddress(drawdll_func.to_load, "UpdateState");
+        drawdll_func.UpdateState = (void(*)(LONG, int*, int, BOOL, BOOL))GetProcAddress(drawdll_func.to_load, "UpdateState");
         drawdll_func.ScaleGraphics = (void(*)(int))GetProcAddress(drawdll_func.to_load, "ScaleGraphics");
         drawdll_func.CleanupGraphics = (void(*)(void))GetProcAddress(drawdll_func.to_load, "CleanupGraphics");
 
@@ -463,8 +480,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     //drawable character and whether to animate their movement or not
     int *customer_states = win_malloc(sizeof(int) * (size_t)prev_total_customers);
     int barber_state = (int)GetBarberState(barber);
-    BOOL *animate_customer = win_malloc(sizeof(BOOL) * (size_t)prev_total_customers);
-    BOOL animate_barber = FALSE;
 
 
     if (!ConvertWinToClientResolutions()) {
@@ -538,7 +553,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
             HandleMessages(SBarberMainWindow.hwnd);
 
             //we check to see if the number of customers has changed
-            LONG tmp = GetNumOfCustomers();
+            /*LONG tmp = GetNumOfCustomers();
             if (tmp != prev_total_customers) {
                 if (tmp - prev_total_customers < 0) {//if there are less customers than before
                     for (; customer_array_idx <= prev_total_customers - tmp - 1; customer_array_idx++) {
@@ -555,13 +570,10 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
                 win_realloc(customer_states, sizeof(int) * (size_t)prev_total_customers);
                 win_realloc(animate_customer, sizeof(BOOL) * (size_t)prev_total_customers);
-            }
-            tmp = GetBarberState(barber);
+            }*/
+            LONG tmp = GetBarberState(barber);
             if (tmp != barber_state) {
                 barber_state = tmp;
-                animate_barber = TRUE;
-            } else {
-                animate_barber = FALSE;
             }
 
             for (int i = 0; i < prev_total_customers; i++) {
@@ -569,9 +581,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
                     int tmp = (int)GetCustomerState(*(customer_array + customer_array_idx + i));
                     if (customer_states[i] != tmp) {
                         customer_states[i] = tmp;
-                        animate_customer[i] = TRUE;
-                    } else {
-                        animate_customer[i] = FALSE;
                     }
                 } else {
                     //unreachable
@@ -580,16 +589,15 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
             }
 #ifdef _DEBUG
             if (drawdll_func.UpdateState) drawdll_func.UpdateState(prev_total_customers, customer_states, 
-                                                                   barber_state, animate_customer,
-                                                                   animate_barber, animations_enabled,
+                                                                   barber_state, character_animations,
                                                                    GetBarbershopDoorState());
 #else
-            UpdateState(prev_total_customers, customer_states, barber_state, animate_customer,
-                        animate_barber, animations_enabled, GetBarbershopDoorState());
+            UpdateState(prev_total_customers, customer_states, barber_state, character_animations, GetBarbershopDoorState());
 #endif
             next_game_tick += SKIP_TICKS;
             loops++;
         }
+        Sleep(1);
     }
     //stop the running threads
     SetEvent(KillAllThreadsEvt);
@@ -603,7 +611,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     }
     win_free(customer_array);
     win_free(customer_states);
-    win_free(animate_customer);
     deleteFIFOqueue(customer_queue, DONT_DELETE_DATA);
     if (!DeleteBarber(barber)) fprintf(stderr, "Error freeing up barber resources!\n");
 

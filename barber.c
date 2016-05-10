@@ -9,8 +9,6 @@
 #include "FIFOqueue.h"
 
 
-#define TIMEOUT 2000
-
 
 
 static BOOL BarberIsInitialized = FALSE;
@@ -49,8 +47,8 @@ static UINT CALLBACK BarberThread(LPVOID args)
         return 1;
     }
 
+    //BOOL done = FALSE; the barber thread doesn't finish
     barber_data *barber = (barber_data*)args;
-    //BOOL done = FALSE;
     HANDLE ReadyCustomersOrDieObj[2] = {KillAllThreadsEvt, ReadyCustomersSem};
 
 

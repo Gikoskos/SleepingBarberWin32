@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <tchar.h>
+#include <assert.h>
 
 //wrappers for the wordy winapi alloc functions
 #define win_free(x) HeapFree(GetProcessHeap(), 0, x)
@@ -67,5 +68,7 @@
 if (x) {\
     break;\
 }
+
+#define TIMEOUT 2000
 
 #endif //__COMMON_H

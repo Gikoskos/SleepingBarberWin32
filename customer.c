@@ -10,7 +10,6 @@
 #include "FIFOqueue.h"
 
 
-#define TIMEOUT 2000
 
 #define EXIT_LOOP_IF_ASSERT(x) \
 if (x) {\
@@ -90,11 +89,19 @@ static UINT CALLBACK CustomerThread(LPVOID args)
 
             ReleaseSemaphore(ReadyCustomersSem, 1, NULL);
             BREAK_IF_TRUE(WaitForMultipleObjects(2, BarberIsReadyOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
+
+            /*BREAK_IF_TRUE(WaitForMultipleObjects(2, AccessFIFOOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
+            FIFOdequeue(customer_queue);
+            ReleaseMutex(AccessCustomerFIFOMtx);*/
+
             SetCustomerState(customer, GETTING_HAIRCUT);
 
             BREAK_IF_TRUE(WaitForMultipleObjects(2, BarberIsDoneOrDieObj, FALSE, INFINITE) == WAIT_OBJECT_0);
             customer->haircut_success = done = TRUE;
             printf("Customer %ld is done!\n", customer->queue_num);
+        } else {
+            customer->haircut_success = FALSE;
+            done = TRUE;
         }
     }
     SetCustomerState(customer, CUSTOMER_DONE);

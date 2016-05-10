@@ -428,8 +428,7 @@ static RECT GetInvalidPositionRect(void)
 }
 
 void UpdateState(LONG num_of_customers, int *customer_states, int barber_state,
-                 BOOL *animate_customer, BOOL animate_barber, BOOL enable_animations,
-                 BOOL barbershop_door_is_open)
+                 BOOL enable_animations, BOOL barbershop_door_is_open)
 {
     //these values are used in animating the characters
     static BOOL start_animating_customer[8]; //using an automatic array for now
@@ -440,16 +439,16 @@ void UpdateState(LONG num_of_customers, int *customer_states, int barber_state,
     for (int i = 0; i < CUSTOMER_CHAIRS; i++) chair_occupied[i] = FALSE;
 
     if ((num_of_customers != current_numofcustomers) && (num_of_customers >= 0)) {
-        //CleanupGraphics();
         current_numofcustomers = num_of_customers;
 
         if (current_numofcustomers) {
             if (!customer_graphic) {
-                customer_graphic = win_malloc(sizeof(RECT)*current_numofcustomers);
+                customer_graphic = win_malloc(sizeof(RECT) * (size_t)current_numofcustomers);
             } else {
-                customer_graphic = win_realloc(customer_graphic, sizeof(RECT)*current_numofcustomers);
+                customer_graphic = win_realloc(customer_graphic, sizeof(RECT) * (size_t)current_numofcustomers);
             }
         }
+        assert(customer_graphic);
     }
 
     RECT next_to_draw;
@@ -519,6 +518,8 @@ void UpdateState(LONG num_of_customers, int *customer_states, int barber_state,
     //TODO: fix empty chair count
     int next_queue_pos = 0;
     for (int i = 0; i < current_numofcustomers; i++) {
+        if (!customer_states[i]) continue;
+
         switch (customer_states[i]) {
             case WAITTING_IN_QUEUE:
                 next_to_draw = GetCustomerQueuePositionRect(next_queue_pos++);
